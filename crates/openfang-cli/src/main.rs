@@ -927,7 +927,6 @@ fn main() {
                 launcher::LauncherChoice::GetStarted => cmd_init(false),
                 launcher::LauncherChoice::Chat => cmd_quick_chat(cli.config, None),
                 launcher::LauncherChoice::Dashboard => cmd_dashboard(),
-                launcher::LauncherChoice::DesktopApp => launcher::launch_desktop_app(),
                 launcher::LauncherChoice::TerminalUI => tui::run(cli.config),
                 launcher::LauncherChoice::ShowHelp => {
                     use clap::CommandFactory;
@@ -1278,7 +1277,7 @@ fn cmd_init_quick(openfang_dir: &std::path::Path) {
 }
 
 /// Interactive 5-step onboarding wizard (ratatui TUI).
-fn cmd_init_interactive(openfang_dir: &std::path::Path) {
+fn cmd_init_interactive(_openfang_dir: &std::path::Path) {
     use tui::screens::init_wizard::{self, InitResult, LaunchChoice};
 
     match init_wizard::run() {
@@ -1301,9 +1300,6 @@ fn cmd_init_interactive(openfang_dir: &std::path::Path) {
 
             // Execute the user's chosen launch action.
             match launch {
-                LaunchChoice::Desktop => {
-                    launch_desktop_app(openfang_dir);
-                }
                 LaunchChoice::Dashboard => {
                     if let Some(base) = find_daemon() {
                         let url = format!("{base}/");
@@ -1328,63 +1324,6 @@ fn cmd_init_interactive(openfang_dir: &std::path::Path) {
         }
         InitResult::Cancelled => {
             println!("  Setup cancelled.");
-        }
-    }
-}
-
-/// Launch the openfang-desktop Tauri app, connecting to the running daemon.
-fn launch_desktop_app(_openfang_dir: &std::path::Path) {
-    // Look for the desktop binary next to our own executable.
-    let desktop_bin = {
-        let exe = std::env::current_exe().ok();
-        let dir = exe.as_ref().and_then(|e| e.parent());
-
-        #[cfg(windows)]
-        let name = "openfang-desktop.exe";
-        #[cfg(not(windows))]
-        let name = "openfang-desktop";
-
-        dir.map(|d| d.join(name))
-    };
-
-    match desktop_bin {
-        Some(ref path) if path.exists() => {
-            ui::success("Launching OpenFang Desktop...");
-            match std::process::Command::new(path)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn()
-            {
-                Ok(_) => {
-                    ui::success("Desktop app started.");
-                }
-                Err(e) => {
-                    ui::error(&format!("Failed to launch desktop app: {e}"));
-                    ui::hint("Try: openfang dashboard");
-                }
-            }
-        }
-        _ => {
-            ui::error("Desktop app not found.");
-            ui::hint("Install it with: cargo install openfang-desktop");
-            ui::hint("Falling back to web dashboard...");
-            ui::blank();
-            if let Some(base) = find_daemon() {
-                let url = format!("{base}/");
-                if !open_in_browser(&url) {
-                    // Browser launch failed entirely (e.g., sandbox EPERM,
-                    // no display server, container environment).
-                    ui::hint("Could not open a browser automatically.");
-                }
-                // Always print the URL so the user can open it manually,
-                // even when open_in_browser reported success — the spawned
-                // opener may still fail asynchronously.
-                ui::hint(&format!("Dashboard: {url}"));
-            } else {
-                ui::hint("Daemon is not running. Start it with: openfang start");
-                ui::hint("Then open: http://127.0.0.1:4200");
-            }
         }
     }
 }

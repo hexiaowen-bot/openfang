@@ -11,7 +11,6 @@ members = [
     "crates/openfang-channels",
     "crates/openfang-migrate",
     "crates/openfang-skills",
-    "crates/openfang-desktop",
     "crates/openfang-hands",
     "crates/openfang-extensions",
     "xtask",
