@@ -227,7 +227,6 @@ const PROVIDERS: &[ProviderInfo] = &[
 /// What the user chose to do after init completes.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum LaunchChoice {
-    Desktop,
     Dashboard,
     Chat,
 }
@@ -859,28 +858,24 @@ pub fn run() -> InitResult {
                     Step::Complete => match key.code {
                         KeyCode::Up | KeyCode::Char('k') => {
                             let i = state.complete_list.selected().unwrap_or(0);
-                            let next = if i == 0 { 2 } else { i - 1 };
+                            let next = if i == 0 { 1 } else { i - 1 };
                             state.complete_list.select(Some(next));
                         }
                         KeyCode::Down | KeyCode::Char('j') => {
                             let i = state.complete_list.selected().unwrap_or(0);
-                            let next = (i + 1) % 3;
+                            let next = (i + 1) % 2;
                             state.complete_list.select(Some(next));
                         }
-                        // Number shortcuts: 1=Desktop, 2=Dashboard, 3=Chat
+                        // Number shortcuts: 1=Dashboard, 2=Chat
                         KeyCode::Char('1') => {
                             state.complete_list.select(Some(0));
                         }
                         KeyCode::Char('2') => {
                             state.complete_list.select(Some(1));
                         }
-                        KeyCode::Char('3') => {
-                            state.complete_list.select(Some(2));
-                        }
                         KeyCode::Enter => {
                             let choice = match state.complete_list.selected() {
-                                Some(0) => LaunchChoice::Desktop,
-                                Some(1) => LaunchChoice::Dashboard,
+                                Some(0) => LaunchChoice::Dashboard,
                                 _ => LaunchChoice::Chat,
                             };
                             break InitResult::Completed {
@@ -1156,24 +1151,6 @@ decay_rate = 0.05
         Err(e) => {
             state.daemon_error = format!("Daemon failed: {e}");
         }
-    }
-}
-
-/// Check if the `openfang-desktop` binary exists next to the current exe.
-fn find_desktop_binary() -> Option<std::path::PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let dir = exe.parent()?;
-
-    #[cfg(windows)]
-    let name = "openfang-desktop.exe";
-    #[cfg(not(windows))]
-    let name = "openfang-desktop";
-
-    let path = dir.join(name);
-    if path.exists() {
-        Some(path)
-    } else {
-        None
     }
 }
 
@@ -2135,8 +2112,6 @@ fn draw_complete(f: &mut Frame, area: Rect, state: &mut State) {
         &state.model_input
     };
 
-    let has_desktop = find_desktop_binary().is_some();
-
     let chunks = Layout::vertical([
         Constraint::Length(1), // 0: spacer
         Constraint::Length(1), // 1: status line
@@ -2149,11 +2124,10 @@ fn draw_complete(f: &mut Frame, area: Rect, state: &mut State) {
         Constraint::Length(1), // 8: spacer
         Constraint::Length(1), // 9: question
         Constraint::Length(1), // 10: spacer
-        Constraint::Length(1), // 11: option 1 — Desktop
-        Constraint::Length(1), // 12: option 2 — Dashboard
-        Constraint::Length(1), // 13: option 3 — Chat
-        Constraint::Min(0),    // 14: flex
-        Constraint::Length(1), // 15: hints
+        Constraint::Length(1), // 11: option 1 — Dashboard
+        Constraint::Length(1), // 12: option 2 — Chat
+        Constraint::Min(0),    // 13: flex
+        Constraint::Length(1), // 14: hints
     ])
     .split(area);
 
@@ -2269,15 +2243,12 @@ fn draw_complete(f: &mut Frame, area: Rect, state: &mut State) {
     );
 
     // ── Options ──
-    let desktop_hint = if has_desktop {
-        "native window with system tray"
-    } else {
-        "not installed"
-    };
-
-    let options: [(&str, &str, &str); 3] = [
-        ("Desktop app", "(recommended)", desktop_hint),
-        ("Web dashboard", "", "opens in your default browser"),
+    let options: [(&str, &str, &str); 2] = [
+        (
+            "Web dashboard",
+            "(recommended)",
+            "opens in your default browser",
+        ),
         ("Terminal chat", "", "interactive chat right here"),
     ];
 
@@ -2286,7 +2257,7 @@ fn draw_complete(f: &mut Frame, area: Rect, state: &mut State) {
         let num = format!("[{}]", i + 1);
 
         let arrow = if selected {
-            Span::styled("  \u{25b8} ", Style::default().fg(theme::ACCENT))
+            Span::styled("  ▸ ", Style::default().fg(theme::ACCENT))
         } else {
             Span::raw("    ")
         };
@@ -2299,10 +2270,7 @@ fn draw_complete(f: &mut Frame, area: Rect, state: &mut State) {
             theme::dim_style()
         };
 
-        let label_style = if i == 0 && !has_desktop {
-            // Grey out desktop option if binary not found
-            theme::dim_style()
-        } else if selected {
+        let label_style = if selected {
             Style::default()
                 .fg(theme::TEXT_PRIMARY)
                 .add_modifier(Modifier::BOLD)
@@ -2316,11 +2284,7 @@ fn draw_complete(f: &mut Frame, area: Rect, state: &mut State) {
             Span::styled(format!(" {badge}"), Style::default().fg(theme::GREEN))
         };
 
-        let desc_span = if i == 0 && !has_desktop {
-            Span::styled(format!("  {desc}"), Style::default().fg(theme::YELLOW))
-        } else {
-            Span::styled(format!("  {desc}"), theme::dim_style())
-        };
+        let desc_span = Span::styled(format!("  {desc}"), theme::dim_style());
 
         f.render_widget(
             Paragraph::new(Line::from(vec![
@@ -2338,9 +2302,9 @@ fn draw_complete(f: &mut Frame, area: Rect, state: &mut State) {
     // ── Bottom hints ──
     f.render_widget(
         Paragraph::new(Line::from(vec![Span::styled(
-            "  [\u{2191}\u{2193}/jk] Navigate  [Enter] Launch  [1/2/3] Quick select",
+            "  [↑↓/jk] Navigate  [Enter] Launch  [1/2] Quick select",
             theme::hint_style(),
         )])),
-        chunks[15],
+        chunks[14],
     );
 }
