@@ -27,11 +27,15 @@
 </div>
 
 <div class="app-layout" :class="{ 'focus-mode': $store.app.focusMode }">
+  <!-- Tech Grid Background -->
+  <div class="tech-grid"></div>
+  
   <!-- Sidebar -->
   <nav class="sidebar" :class="{ collapsed: sidebarCollapsed, 'mobile-open': mobileMenuOpen }">
     <div class="sidebar-header">
       <div class="sidebar-header-text">
         <div class="sidebar-logo">
+          <div class="logo-glow"></div>
           <img src="/logo.png" alt="OpenFang" width="28" height="28">
           <div>
             <h1>OPENFANG</h1>
@@ -48,10 +52,10 @@
 
     <div class="sidebar-status" :class="{ offline: !connected && !$store.app.booting }">
       <span class="status-dot"></span>
-      <span class="sidebar-label" x-show="connected" x-text="agentCount + ' agent(s) running'"></span>
-      <span class="sidebar-label" x-show="$store.app.booting && !connected" class="conn-reconnecting">Connecting...</span>
-      <span class="sidebar-label" x-show="!connected && !$store.app.booting && $store.app.connectionState === 'reconnecting'" class="conn-reconnecting">Reconnecting...</span>
-      <span class="sidebar-label" x-show="!connected && !$store.app.booting && $store.app.connectionState !== 'reconnecting'" x-text="'disconnected' + ($store.app.lastError ? ' — ' + $store.app.lastError : '')">disconnected</span>
+      <span class="sidebar-label" x-show="connected" x-text="agentCount + ' AGENTS ACTIVE'"></span>
+      <span class="sidebar-label" x-show="$store.app.booting && !connected" class="conn-reconnecting">INITIALIZING...</span>
+      <span class="sidebar-label" x-show="!connected && !$store.app.booting && $store.app.connectionState === 'reconnecting'" class="conn-reconnecting">RECONNECTING...</span>
+      <span class="sidebar-label" x-show="!connected && !$store.app.booting && $store.app.connectionState !== 'reconnecting'" x-text="'OFFLINE' + ($store.app.lastError ? ' — ' + $store.app.lastError : '')">OFFLINE</span>
       <span class="conn-badge sidebar-label" :class="wsConnected ? 'ws' : 'http'" x-text="wsConnected ? 'WS' : 'HTTP'" x-show="connected"></span>
     </div>
 
