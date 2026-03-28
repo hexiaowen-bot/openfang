@@ -559,16 +559,6 @@ pub async fn build_router(
             "/api/skills/create",
             axum::routing::post(routes::create_skill),
         )
-        // Migration endpoints
-        .route(
-            "/api/migrate/detect",
-            axum::routing::get(routes::migrate_detect),
-        )
-        .route(
-            "/api/migrate/scan",
-            axum::routing::post(routes::migrate_scan),
-        )
-        .route("/api/migrate", axum::routing::post(routes::run_migrate))
         // Cron job management endpoints
         .route(
             "/api/cron/jobs",

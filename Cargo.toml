@@ -9,11 +9,9 @@ members = [
     "crates/openfang-kernel",
     "crates/openfang-cli",
     "crates/openfang-channels",
-    "crates/openfang-migrate",
     "crates/openfang-skills",
     "crates/openfang-hands",
     "crates/openfang-extensions",
-    "xtask",
 ]
 
 [workspace.package]

@@ -15,7 +15,6 @@ openfang-wire = { path = "../openfang-wire" }
 openfang-skills = { path = "../openfang-skills" }
 openfang-hands = { path = "../openfang-hands" }
 openfang-extensions = { path = "../openfang-extensions" }
-openfang-migrate = { path = "../openfang-migrate" }
 dashmap = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
@@ -24,7 +23,6 @@ toml = { workspace = true }
 tracing = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true }
-tower = { workspace = true }
 tower-http = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }

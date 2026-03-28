@@ -129,8 +129,6 @@ enum Commands {
     /// Manage event triggers (list, create, delete) [*].
     #[command(subcommand)]
     Trigger(TriggerCommands),
-    /// Migrate from another agent framework to OpenFang.
-    Migrate(MigrateArgs),
     /// Manage skills (install, list, search, create, remove) [*].
     #[command(subcommand)]
     Skill(SkillCommands),
@@ -317,26 +315,6 @@ enum VaultCommands {
 enum ScaffoldKind {
     Skill,
     Integration,
-}
-
-#[derive(clap::Args)]
-struct MigrateArgs {
-    /// Source framework to migrate from.
-    #[arg(long, value_enum)]
-    from: MigrateSourceArg,
-    /// Path to the source workspace (auto-detected if not set).
-    #[arg(long)]
-    source_dir: Option<PathBuf>,
-    /// Dry run — show what would be imported without making changes.
-    #[arg(long)]
-    dry_run: bool,
-}
-
-#[derive(Clone, clap::ValueEnum)]
-enum MigrateSourceArg {
-    Openclaw,
-    Langchain,
-    Autogpt,
 }
 
 #[derive(Subcommand)]
@@ -972,7 +950,6 @@ fn main() {
             } => cmd_trigger_create(&agent_id, &pattern_json, &prompt, max_fires),
             TriggerCommands::Delete { trigger_id } => cmd_trigger_delete(&trigger_id),
         },
-        Some(Commands::Migrate(args)) => cmd_migrate(args),
         Some(Commands::Skill(sub)) => match sub {
             SkillCommands::Install { source } => cmd_skill_install(&source),
             SkillCommands::List => cmd_skill_list(),
@@ -3361,60 +3338,6 @@ fn boot_kernel(config: Option<PathBuf>) -> OpenFangKernel {
 // ---------------------------------------------------------------------------
 // Migrate command
 // ---------------------------------------------------------------------------
-
-fn cmd_migrate(args: MigrateArgs) {
-    let source = match args.from {
-        MigrateSourceArg::Openclaw => openfang_migrate::MigrateSource::OpenClaw,
-        MigrateSourceArg::Langchain => openfang_migrate::MigrateSource::LangChain,
-        MigrateSourceArg::Autogpt => openfang_migrate::MigrateSource::AutoGpt,
-    };
-
-    let source_dir = args.source_dir.unwrap_or_else(|| {
-        let home = dirs::home_dir().unwrap_or_else(|| {
-            eprintln!("Error: Could not determine home directory");
-            std::process::exit(1);
-        });
-        match source {
-            openfang_migrate::MigrateSource::OpenClaw => home.join(".openclaw"),
-            openfang_migrate::MigrateSource::LangChain => home.join(".langchain"),
-            openfang_migrate::MigrateSource::AutoGpt => home.join("Auto-GPT"),
-        }
-    });
-
-    let target_dir = cli_openfang_home();
-
-    println!("Migrating from {} ({})...", source, source_dir.display());
-    if args.dry_run {
-        println!("  (dry run — no changes will be made)\n");
-    }
-
-    let options = openfang_migrate::MigrateOptions {
-        source,
-        source_dir,
-        target_dir,
-        dry_run: args.dry_run,
-    };
-
-    match openfang_migrate::run_migration(&options) {
-        Ok(report) => {
-            report.print_summary();
-
-            // Save migration report
-            if !args.dry_run {
-                let report_path = options.target_dir.join("migration_report.md");
-                if let Err(e) = std::fs::write(&report_path, report.to_markdown()) {
-                    eprintln!("Warning: Could not save migration report: {e}");
-                } else {
-                    println!("\n  Report saved to: {}", report_path.display());
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("Migration failed: {e}");
-            std::process::exit(1);
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Skill commands
