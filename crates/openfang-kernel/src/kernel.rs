@@ -117,6 +117,8 @@ pub struct OpenFangKernel {
         Option<Arc<dyn openfang_runtime::embedding::EmbeddingDriver + Send + Sync>>,
     /// Hand registry — curated autonomous capability packages.
     pub hand_registry: openfang_hands::registry::HandRegistry,
+    /// Agent template registry — expert agent blueprints marketplace.
+    pub agent_templates: openfang_agents::registry::AgentTemplateRegistry,
     /// Credential resolver — vault → dotenv → env var priority chain.
     pub credential_resolver: std::sync::Mutex<openfang_extensions::credentials::CredentialResolver>,
     /// Extension/integration registry (bundled MCP templates + install state).
@@ -790,6 +792,24 @@ impl OpenFangKernel {
             info!("Loaded {hand_count} bundled hand(s)");
         }
 
+        // Initialize agent template registry (expert agent blueprints marketplace)
+        let agent_templates_dir = config.home_dir.join("agent-templates");
+        let agent_templates = openfang_agents::registry::AgentTemplateRegistry::new(agent_templates_dir);
+        let template_count = agent_templates.load_bundled();
+        if template_count > 0 {
+            info!("Loaded {template_count} bundled agent template(s)");
+        }
+        match agent_templates.load_installed() {
+            Ok(count) => {
+                if count > 0 {
+                    info!("Loaded {count} installed agent template(s)");
+                }
+            }
+            Err(e) => {
+                warn!("Failed to load installed agent templates: {e}");
+            }
+        }
+
         // Initialize extension/integration registry
         let mut extension_registry =
             openfang_extensions::registry::IntegrationRegistry::new(&config.home_dir);
@@ -1029,6 +1049,7 @@ impl OpenFangKernel {
             pairing,
             embedding_driver,
             hand_registry,
+            agent_templates,
             credential_resolver: std::sync::Mutex::new(credential_resolver),
             extension_registry: std::sync::RwLock::new(extension_registry),
             extension_health,

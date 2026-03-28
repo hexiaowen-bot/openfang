@@ -411,6 +411,39 @@ pub async fn build_router(
             "/api/hands/instances/{id}/browser",
             axum::routing::get(routes::hand_instance_browser),
         )
+        // Agent templates endpoints (expert marketplace)
+        .route(
+            "/api/agent-templates",
+            axum::routing::get(routes::list_agent_templates),
+        )
+        .route(
+            "/api/agent-templates/{id}",
+            axum::routing::get(routes::get_agent_template),
+        )
+        .route(
+            "/api/agent-templates/{id}/instantiate",
+            axum::routing::post(routes::instantiate_agent_template),
+        )
+        .route(
+            "/api/agent-templates/{id}/requirements",
+            axum::routing::get(routes::get_agent_template_requirements),
+        )
+        .route(
+            "/api/agent-templates/{id}/settings",
+            axum::routing::get(routes::get_agent_template_settings),
+        )
+        .route(
+            "/api/agent-templates/{id}/enable",
+            axum::routing::post(routes::enable_agent_template),
+        )
+        .route(
+            "/api/agent-templates/{id}/disable",
+            axum::routing::post(routes::disable_agent_template),
+        )
+        .route(
+            "/api/agent-templates/{id}",
+            axum::routing::delete(routes::uninstall_agent_template),
+        )
         // MCP server endpoints
         .route(
             "/api/mcp/servers",

@@ -1,0 +1,57 @@
+id = "oh-my-opencode"
+name = "Oh My OpenCode"
+description = "Expert coding agent with deep codebase understanding and refactoring capabilities"
+author = "openfang"
+version = "1.0.0"
+category = "coding"
+icon = "🚀"
+tags = ["coding", "development", "code-review", "refactoring", "debugging"]
+
+[[settings]]
+key = "style"
+label = "Code Style"
+type = "select"
+default = "concise"
+description = "How verbose the code and explanations should be"
+
+[[settings.options]]
+value = "concise"
+label = "Concise (minimal comments)"
+
+[[settings.options]]
+value = "verbose"
+label = "Verbose (detailed comments)"
+
+[[settings.options]]
+value = "documented"
+label = "Documented (docstrings + comments)"
+
+[[settings]]
+key = "test_first"
+label = "Test-First Development"
+type = "toggle"
+default = "false"
+description = "Write tests before implementation when possible"
+
+[agent.model]
+provider = "default"
+model = "default"
+max_tokens = 8192
+temperature = 0.3
+prompt_file = "SOUL.md"
+
+[agent.resources]
+max_llm_tokens_per_hour = 500000
+
+[agent.capabilities]
+tools = ["file_read", "file_write", "file_list", "shell_exec", "web_search", "web_fetch", "memory_store", "memory_recall"]
+network = ["*"]
+memory_read = ["*"]
+memory_write = ["self.*"]
+shell = ["*"]
+
+[agent.autonomous]
+max_iterations = 100
+
+[agent]
+skills = ["code-reviewer", "git-expert"]

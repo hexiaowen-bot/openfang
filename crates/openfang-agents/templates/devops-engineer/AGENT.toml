@@ -1,0 +1,70 @@
+id = "devops-engineer"
+name = "DevOps Engineer"
+description = "Infrastructure and CI/CD specialist for cloud deployments, automation, and system reliability"
+author = "openfang"
+version = "1.0.0"
+category = "devops"
+icon = "🔧"
+tags = ["devops", "infrastructure", "ci-cd", "cloud", "automation", "kubernetes", "docker"]
+
+[[requires]]
+key = "docker"
+label = "Docker"
+type = "binary"
+check_value = "docker"
+optional = true
+description = "For container operations"
+
+[[requires]]
+key = "kubectl"
+label = "kubectl"
+type = "binary"
+check_value = "kubectl"
+optional = true
+description = "For Kubernetes operations"
+
+[[settings]]
+key = "cloud_provider"
+label = "Primary Cloud Provider"
+type = "select"
+default = "aws"
+description = "Cloud platform for deployment guidance"
+
+[[settings.options]]
+value = "aws"
+label = "Amazon Web Services"
+
+[[settings.options]]
+value = "gcp"
+label = "Google Cloud Platform"
+
+[[settings.options]]
+value = "azure"
+label = "Microsoft Azure"
+
+[[settings.options]]
+value = "onprem"
+label = "On-Premises / Self-Hosted"
+
+[agent.model]
+provider = "default"
+model = "default"
+max_tokens = 8192
+temperature = 0.3
+prompt_file = "SOUL.md"
+
+[agent.resources]
+max_llm_tokens_per_hour = 300000
+
+[agent.capabilities]
+tools = ["file_read", "file_write", "file_list", "shell_exec", "web_search", "web_fetch", "memory_store", "memory_recall"]
+network = ["*"]
+memory_read = ["*"]
+memory_write = ["self.*"]
+shell = ["*"]
+
+[agent.autonomous]
+max_iterations = 80
+
+[agent]
+skills = ["devops-lead", "ops"]

@@ -12,6 +12,7 @@ openfang-runtime = { path = "../openfang-runtime" }
 openfang-skills = { path = "../openfang-skills" }
 openfang-hands = { path = "../openfang-hands" }
 openfang-extensions = { path = "../openfang-extensions" }
+openfang-agents = { path = "../openfang-agents" }
 openfang-wire = { path = "../openfang-wire" }
 openfang-channels = { path = "../openfang-channels" }
 tokio = { workspace = true }

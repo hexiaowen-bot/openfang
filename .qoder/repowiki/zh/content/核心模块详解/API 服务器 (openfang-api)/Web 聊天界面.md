@@ -21,13 +21,14 @@
 3. [核心组件](#核心组件)
 4. [架构总览](#架构总览)
 5. [详细组件分析](#详细组件分析)
-6. [依赖关系分析](#依赖关系分析)
-7. [性能考虑](#性能考虑)
-8. [故障排除指南](#故障排除指南)
-9. [结论](#结论)
+6. [双主题模式系统](#双主题模式系统)
+7. [依赖关系分析](#依赖关系分析)
+8. [性能考虑](#性能考虑)
+9. [故障排除指南](#故障排除指南)
+10. [结论](#结论)
 
 ## 简介
-本文件为 OpenFang Web 聊天界面的全面用户界面文档，涵盖前端静态资源组织、JavaScript 交互逻辑、实时消息处理、HTML 模板、CSS 样式系统、用户交互设计、消息发送、历史记录、文件上传、语音输入、表情符号支持、界面定制与主题配置、响应式设计以及与后端 API 的集成方式和 WebSocket 连接管理等内容。目标是帮助开发者与使用者快速理解并高效使用该聊天界面。
+本文件为 OpenFang Web 聊天界面的全面用户界面文档，涵盖前端静态资源组织、JavaScript 交互逻辑、实时消息处理、HTML 模板、CSS 样式系统、用户交互设计、消息发送、历史记录、文件上传、语音输入、表情符号支持、界面定制与主题配置、响应式设计以及与后端 API 的集成方式和 WebSocket 连接管理等内容。本次更新重点反映了双主题模式系统的实现，包括亮色主题和暗色主题的完整CSS自定义属性系统，涵盖颜色方案、视觉效果、动画系统等。
 
 ## 项目结构
 OpenFang Web 前端静态资源位于 crates/openfang-api/static 目录，采用模块化组织：
@@ -39,17 +40,17 @@ graph TB
 subgraph "静态资源"
 IH["index_head.html"]
 IB["index_body.html"]
-CSS1["theme.css"]
-CSS2["layout.css"]
-CSS3["components.css"]
+CSS1["theme.css<br/>双主题系统"]
+CSS2["layout.css<br/>布局系统"]
+CSS3["components.css<br/>组件库"]
 MAN["manifest.json"]
 SW["sw.js"]
 end
 subgraph "JavaScript"
-APP["app.js"]
-API["api.js"]
-CHAT["chat.js"]
-AGENTS["agents.js"]
+APP["app.js<br/>应用框架"]
+API["api.js<br/>API客户端"]
+CHAT["chat.js<br/>聊天页面"]
+AGENTS["agents.js<br/>代理页面"]
 end
 IH --> IB
 CSS1 --> CSS2
@@ -62,23 +63,10 @@ API --> CHAT
 ```
 
 **图表来源**
-- [index_head.html:1-15](file://crates/openfang-api/static/index_head.html#L1-L15)
+- [index_head.html:1-45](file://crates/openfang-api/static/index_head.html#L1-L45)
 - [index_body.html:1-800](file://crates/openfang-api/static/index_body.html#L1-L800)
-- [theme.css:1-277](file://crates/openfang-api/static/css/theme.css#L1-L277)
-- [layout.css:1-315](file://crates/openfang-api/static/css/layout.css#L1-L315)
-- [components.css:1-800](file://crates/openfang-api/static/css/components.css#L1-L800)
-- [app.js:1-418](file://crates/openfang-api/static/js/app.js#L1-L418)
-- [api.js:1-333](file://crates/openfang-api/static/js/api.js#L1-L333)
-- [chat.js:1-1240](file://crates/openfang-api/static/js/pages/chat.js#L1-L1240)
-- [agents.js:1-778](file://crates/openfang-api/static/js/pages/agents.js#L1-L778)
-- [manifest.json:1-14](file://crates/openfang-api/static/manifest.json#L1-L14)
-- [sw.js:1-4](file://crates/openfang-api/static/sw.js#L1-L4)
-
-**章节来源**
-- [index_head.html:1-15](file://crates/openfang-api/static/index_head.html#L1-L15)
-- [index_body.html:1-800](file://crates/openfang-api/static/index_body.html#L1-L800)
-- [theme.css:1-277](file://crates/openfang-api/static/css/theme.css#L1-L277)
-- [layout.css:1-315](file://crates/openfang-api/static/css/layout.css#L1-L315)
+- [theme.css:1-329](file://crates/openfang-api/static/css/theme.css#L1-L329)
+- [layout.css:1-412](file://crates/openfang-api/static/css/layout.css#L1-L412)
 - [components.css:1-800](file://crates/openfang-api/static/css/components.css#L1-L800)
 - [app.js:1-418](file://crates/openfang-api/static/js/app.js#L1-L418)
 - [api.js:1-333](file://crates/openfang-api/static/js/api.js#L1-L333)
@@ -92,23 +80,23 @@ API --> CHAT
 - API 客户端：封装 fetch 请求、WebSocket 管理、认证令牌注入、连接状态回调、通知系统
 - 聊天页面：消息渲染、实时流式响应、工具调用卡片、文件/图片上传、语音录制与转录、搜索高亮、会话管理
 - 代理页面：代理列表、详情面板、模板与预设、能力配置、模型切换、工具过滤
-- 样式系统：主题变量、布局网格、组件库、动画与骨架屏、响应式断点
+- 样式系统：双主题CSS变量系统、主题切换器、动画与骨架屏、响应式断点
 
 **章节来源**
 - [app.js:286-418](file://crates/openfang-api/static/js/app.js#L286-L418)
 - [api.js:132-333](file://crates/openfang-api/static/js/api.js#L132-L333)
 - [chat.js:4-1240](file://crates/openfang-api/static/js/pages/chat.js#L4-L1240)
 - [agents.js:19-778](file://crates/openfang-api/static/js/pages/agents.js#L19-L778)
-- [theme.css:1-277](file://crates/openfang-api/static/css/theme.css#L1-L277)
-- [layout.css:1-315](file://crates/openfang-api/static/css/layout.css#L1-L315)
+- [theme.css:1-329](file://crates/openfang-api/static/css/theme.css#L1-L329)
+- [layout.css:1-412](file://crates/openfang-api/static/css/layout.css#L1-L412)
 - [components.css:1-800](file://crates/openfang-api/static/css/components.css#L1-L800)
 
 ## 架构总览
-前端采用“模板 + Alpine.js + 自定义 API 客户端”的轻量架构：
+前端采用"模板 + Alpine.js + 自定义 API 客户端"的轻量架构：
 - HTML 模板通过 Alpine 绑定数据与事件，动态渲染聊天界面
 - API 客户端统一处理 HTTP 与 WebSocket，提供连接状态与错误提示
 - 聊天页面负责消息生命周期管理、实时流式渲染与工具卡片展示
-- 样式系统通过 CSS 变量与主题类实现深浅主题与响应式布局
+- 样式系统通过 CSS 变量与主题类实现双主题模式与响应式布局
 
 ```mermaid
 sequenceDiagram
@@ -130,11 +118,6 @@ ALP->>DOM : 更新消息与元信息
 ```
 
 **图表来源**
-- [chat.js:908-1016](file://crates/openfang-api/static/js/pages/chat.js#L908-L1016)
-- [api.js:215-291](file://crates/openfang-api/static/js/api.js#L215-L291)
-- [index_body.html:542-778](file://crates/openfang-api/static/index_body.html#L542-L778)
-
-**章节来源**
 - [chat.js:908-1016](file://crates/openfang-api/static/js/pages/chat.js#L908-L1016)
 - [api.js:215-291](file://crates/openfang-api/static/js/api.js#L215-L291)
 - [index_body.html:542-778](file://crates/openfang-api/static/index_body.html#L542-L778)
@@ -213,14 +196,15 @@ HTTPResp --> Finalize
 - [agents.js:1-778](file://crates/openfang-api/static/js/pages/agents.js#L1-L778)
 
 ### 样式系统（theme.css、layout.css、components.css）
-- 主题系统：CSS 变量定义浅/深主题、阴影、圆角、字体、动效曲线
-- 布局系统：侧边栏、主内容区、响应式断点、移动端覆盖层、专注模式
-- 组件系统：按钮、卡片、徽章、表格、表单、模态框、消息气泡、打字指示器、工具卡片、画布面板、会话切换器、搜索栏、Markdown 样式、复制按钮
-- 动画与骨架：入场动画、骨架屏、滚动条美化、打印样式、减少动效偏好
+- **双主题系统**：完整的亮色主题和暗色主题CSS变量定义，支持系统主题跟随
+- **主题变量**：背景层次、文字层次、品牌强调色、状态色彩、阴影系统、发光效果
+- **主题切换器**：3模式主题切换器（Light/System/Dark），支持本地存储
+- **动画系统**：主题切换过渡动画、骨架屏、滚动条美化、打印样式
+- **组件适配**：所有组件根据当前主题自动调整颜色和视觉效果
 
 **章节来源**
-- [theme.css:1-277](file://crates/openfang-api/static/css/theme.css#L1-L277)
-- [layout.css:1-315](file://crates/openfang-api/static/css/layout.css#L1-L315)
+- [theme.css:1-329](file://crates/openfang-api/static/css/theme.css#L1-L329)
+- [layout.css:1-412](file://crates/openfang-api/static/css/layout.css#L1-L412)
 - [components.css:1-800](file://crates/openfang-api/static/css/components.css#L1-L800)
 
 ### HTML 模板（index_head.html、index_body.html）
@@ -229,10 +213,82 @@ HTTPResp --> Finalize
 - PWA：manifest、service worker（简单直通）
 
 **章节来源**
-- [index_head.html:1-15](file://crates/openfang-api/static/index_head.html#L1-L15)
+- [index_head.html:1-45](file://crates/openfang-api/static/index_head.html#L1-L45)
 - [index_body.html:1-800](file://crates/openfang-api/static/index_body.html#L1-L800)
 - [manifest.json:1-14](file://crates/openfang-api/static/manifest.json#L1-L14)
 - [sw.js:1-4](file://crates/openfang-api/static/sw.js#L1-L4)
+
+## 双主题模式系统
+
+### 主题架构概述
+OpenFang 实现了完整的双主题模式系统，支持三种主题模式：亮色主题（Light）、暗色主题（Dark）和系统主题（System）。系统通过CSS自定义属性实现主题切换，所有组件都能自动适应当前主题。
+
+### 亮色主题（Light Mode）
+亮色主题提供了现代、简洁的界面体验，适合明亮环境使用：
+
+- **背景层次**：`--bg: #f8f9fc`、`--bg-primary: #ffffff`、`--bg-elevated: #f0f2f5`、`--surface: #ffffff`
+- **文字层次**：`--text: #1a1a2e`、`--text-secondary: #4a4a5c`、`--text-dim: #6b6b7d`、`--text-muted: #9a9aaa`
+- **品牌强调色**：`--accent: #0066ff`(电光蓝色)、`--accent-light: #3385ff`、`--accent-glow: rgba(0, 102, 255, 0.25)`
+- **状态色彩**：成功绿(#10b981)、错误粉红(#ef4444)、警告黄(#f59e0b)、信息蓝(#3b82f6)
+- **玻璃拟态**：`--glass-bg: rgba(255, 255, 255, 0.85)`、`--glass-border: rgba(0, 0, 0, 0.08)`
+
+### 暗色主题（Dark Mode）
+暗色主题采用了赛博朋克美学，以深邃的太空背景为基础：
+
+- **背景层次**：`--bg: #0a0a0f`、`--bg-primary: #0d0d12`、`--bg-elevated: #12121a`、`--surface: #1a1a24`
+- **文字层次**：`--text: #ffffff`、`--text-secondary: #e0e0f0`、`--text-dim: #a0a0b8`、`--text-muted: #6b6b8a`
+- **品牌强调色**：`--accent: #00f5ff`(电光青色)、`--accent-light: #5cffff`、`--accent-glow: rgba(0, 245, 255, 0.3)`
+- **状态色彩**：成功绿(#00ff88)、错误粉红(#ff3366)、警告黄(#ffcc00)、信息蓝(#4488ff)
+- **玻璃拟态**：`--glass-bg: rgba(26, 26, 36, 0.7)`、`--glass-border: rgba(255, 255, 255, 0.08)`
+
+### 系统主题（System Mode）
+系统主题模式会根据用户的操作系统主题设置自动切换：
+
+- **自动检测**：使用 `window.matchMedia('(prefers-color-scheme: dark)')` 监听系统主题变化
+- **无缝切换**：当系统主题从浅色切换到深色时，界面会平滑过渡到暗色主题
+- **本地存储**：用户的选择会被保存在 localStorage 中，即使刷新页面也会保持
+
+### 主题切换器实现
+主题切换器位于侧边栏头部，提供直观的3模式切换：
+
+```html
+<div class="theme-switcher">
+  <button class="theme-opt" :class="{ active: themeMode === 'light' }" @click="setTheme('light')" title="Light">&#9788;</button>
+  <button class="theme-opt" :class="{ active: themeMode === 'system' }" @click="setTheme('system')" title="System">&#9675;</button>
+  <button class="theme-opt" :class="{ active: themeMode === 'dark' }" @click="setTheme('dark')" title="Dark">&#9790;</button>
+</div>
+```
+
+### CSS变量系统
+所有主题相关的颜色和视觉效果都通过CSS自定义属性定义：
+
+- **颜色变量**：`--bg`、`--text`、`--accent`、`--success`、`--error`等
+- **阴影系统**：`--shadow-xs`到`--shadow-xl`的完整阴影层级
+- **发光效果**：`--glow-cyan`、`--glow-purple`等霓虹发光效果
+- **动画变量**：`--transition-fast`、`--transition-normal`等过渡动画参数
+
+### 主题切换动画
+系统实现了平滑的主题切换动画：
+
+- **背景过渡**：`transition: background-color 0.3s ease`
+- **组件过渡**：所有可交互组件都有0.3秒的过渡时间
+- **颜色过渡**：文字颜色、边框颜色、背景色的平滑渐变
+
+### 组件主题适配
+所有组件都经过精心设计以适应双主题模式：
+
+- **按钮**：根据主题自动调整背景色、边框色和悬停效果
+- **卡片**：支持玻璃拟态效果，在不同主题下有不同的透明度和模糊效果
+- **输入框**：边框颜色根据主题自动调整，保持良好的对比度
+- **工具卡片**：按工具类型着色，同时适应当前主题的颜色方案
+- **消息气泡**：用户消息和代理消息使用不同的透明度背景
+
+**章节来源**
+- [theme.css:1-329](file://crates/openfang-api/static/css/theme.css#L1-L329)
+- [layout.css:1-412](file://crates/openfang-api/static/css/layout.css#L1-L412)
+- [components.css:1-800](file://crates/openfang-api/static/css/components.css#L1-L800)
+- [index_head.html:14-43](file://crates/openfang-api/static/index_head.html#L14-L43)
+- [index_body.html:46-51](file://crates/openfang-api/static/index_body.html#L46-L51)
 
 ## 依赖关系分析
 - 组件耦合：
@@ -252,9 +308,9 @@ APP --> CHAT["chat.js"]
 APP --> AGENTS["agents.js"]
 CHAT --> API
 AGENTS --> API
-CHAT --> THEME["theme.css"]
-CHAT --> LAYOUT["layout.css"]
-CHAT --> COMP["components.css"]
+CHAT --> THEME["theme.css<br/>双主题系统"]
+CHAT --> LAYOUT["layout.css<br/>布局系统"]
+CHAT --> COMP["components.css<br/>组件库"]
 AGENTS --> THEME
 AGENTS --> LAYOUT
 AGENTS --> COMP
@@ -265,8 +321,8 @@ AGENTS --> COMP
 - [api.js:132-333](file://crates/openfang-api/static/js/api.js#L132-L333)
 - [chat.js:1-1240](file://crates/openfang-api/static/js/pages/chat.js#L1-L1240)
 - [agents.js:1-778](file://crates/openfang-api/static/js/pages/agents.js#L1-L778)
-- [theme.css:1-277](file://crates/openfang-api/static/css/theme.css#L1-L277)
-- [layout.css:1-315](file://crates/openfang-api/static/css/layout.css#L1-L315)
+- [theme.css:1-329](file://crates/openfang-api/static/css/theme.css#L1-L329)
+- [layout.css:1-412](file://crates/openfang-api/static/css/layout.css#L1-L412)
 - [components.css:1-800](file://crates/openfang-api/static/css/components.css#L1-L800)
 
 **章节来源**
@@ -282,6 +338,8 @@ AGENTS --> COMP
 - 队列机制：避免并发发送导致的重复消息与状态混乱
 - 响应式设计：媒体查询与触摸目标尺寸优化，减少移动端卡顿
 - 动画与骨架：合理使用入场动画与骨架屏，避免过度动画影响性能
+- **主题切换优化**：CSS变量切换比DOM重绘更高效，主题切换动画时间仅为0.3秒
+- **玻璃拟态优化**：使用 CSS backdrop-filter 时注意性能影响，适当调整模糊强度
 
 ## 故障排除指南
 - WebSocket 连接丢失：
@@ -299,6 +357,12 @@ AGENTS --> COMP
 - 搜索无结果：
   - 现象：搜索关键词无法匹配消息或工具
   - 处理：确认查询词大小写不敏感匹配逻辑正常
+- **主题切换问题**：
+  - 现象：主题切换无效或切换后样式异常
+  - 处理：检查浏览器对CSS变量的支持、清除localStorage中的主题设置、重启浏览器
+- **系统主题跟随失效**：
+  - 现象：系统主题变化但界面未更新
+  - 处理：检查浏览器的深色模式设置、确认matchMedia事件监听正常
 
 **章节来源**
 - [api.js:158-198](file://crates/openfang-api/static/js/api.js#L158-L198)
@@ -306,4 +370,8 @@ AGENTS --> COMP
 - [chat.js:262-278](file://crates/openfang-api/static/js/pages/chat.js#L262-L278)
 
 ## 结论
-OpenFang Web 聊天界面通过清晰的模块划分与现代化的前端技术栈，实现了流畅的实时聊天体验。其以 Alpine.js 为核心的状态管理、以 OpenFangAPI 为统一入口的通信层、以 CSS 变量驱动的主题系统与响应式布局，共同构成了一个可扩展、易维护且用户体验优秀的聊天前端。建议在后续迭代中进一步完善错误边界与可访问性，并持续优化流式渲染与多媒体处理的性能表现。
+OpenFang Web 聊天界面通过清晰的模块划分与现代化的前端技术栈，实现了流畅的实时聊天体验。其以 Alpine.js 为核心的状态管理、以 OpenFangAPI 为统一入口的通信层、以双主题模式为核心的完整视觉设计与响应式布局，共同构成了一个可扩展、易维护且用户体验优秀的聊天前端。
+
+本次双主题模式系统的实现成功地为用户提供了灵活的视觉体验选择，支持亮色主题、暗色主题和系统主题的无缝切换。通过CSS自定义属性系统和主题切换器，用户可以根据个人喜好和环境需求自由选择最适合的主题模式。所有组件都经过精心设计，确保在保持功能性的同时，也具备了出色的视觉效果和交互体验。
+
+建议在后续迭代中进一步完善主题系统的可访问性支持，考虑在不同设备上的最佳显示效果，并持续优化流式渲染与多媒体处理的性能表现。

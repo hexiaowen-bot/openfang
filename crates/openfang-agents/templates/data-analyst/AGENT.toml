@@ -1,0 +1,58 @@
+id = "data-analyst"
+name = "Data Analyst"
+description = "Data analysis and visualization expert with skills in statistics, pandas, and insight generation"
+author = "openfang"
+version = "1.0.0"
+category = "analysis"
+icon = "📊"
+tags = ["data", "analysis", "visualization", "statistics", "insights"]
+
+[[requires]]
+key = "python"
+label = "Python 3"
+type = "binary"
+check_value = "python3"
+optional = false
+description = "Required for pandas, numpy, and data processing"
+
+[[settings]]
+key = "output_format"
+label = "Output Format"
+type = "select"
+default = "report"
+description = "How to present analysis results"
+
+[[settings.options]]
+value = "report"
+label = "Report (narrative with tables)"
+
+[[settings.options]]
+value = "notebook"
+label = "Notebook (code + output)"
+
+[[settings.options]]
+value = "code_only"
+label = "Code Only (scripts)"
+
+[agent.model]
+provider = "default"
+model = "default"
+max_tokens = 8192
+temperature = 0.3
+prompt_file = "SOUL.md"
+
+[agent.resources]
+max_llm_tokens_per_hour = 400000
+
+[agent.capabilities]
+tools = ["file_read", "file_write", "file_list", "shell_exec", "web_search", "web_fetch", "memory_store", "memory_recall"]
+network = ["*"]
+memory_read = ["*"]
+memory_write = ["self.*"]
+shell = ["python *", "pip *"]
+
+[agent.autonomous]
+max_iterations = 80
+
+[agent]
+skills = ["data-scientist"]

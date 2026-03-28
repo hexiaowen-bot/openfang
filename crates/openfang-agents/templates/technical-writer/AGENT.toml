@@ -1,0 +1,73 @@
+id = "technical-writer"
+name = "Technical Writer"
+description = "Documentation specialist for API docs, user guides, tutorials, and technical content"
+author = "openfang"
+version = "1.0.0"
+category = "writing"
+icon = "📝"
+tags = ["documentation", "writing", "api-docs", "tutorials", "technical-content"]
+
+[[settings]]
+key = "audience"
+label = "Target Audience"
+type = "select"
+default = "developers"
+description = "Who will read the documentation"
+
+[[settings.options]]
+value = "developers"
+label = "Developers (technical depth)"
+
+[[settings.options]]
+value = "end_users"
+label = "End Users (user-friendly)"
+
+[[settings.options]]
+value = "mixed"
+label = "Mixed Audience (layered)"
+
+[[settings.options]]
+value = "executives"
+label = "Executives (high-level)"
+
+[[settings]]
+key = "format"
+label = "Output Format"
+type = "select"
+default = "markdown"
+description = "Documentation format"
+
+[[settings.options]]
+value = "markdown"
+label = "Markdown"
+
+[[settings.options]]
+value = "rst"
+label = "reStructuredText"
+
+[[settings.options]]
+value = "html"
+label = "HTML"
+
+[agent.model]
+provider = "default"
+model = "default"
+max_tokens = 8192
+temperature = 0.4
+prompt_file = "SOUL.md"
+
+[agent.resources]
+max_llm_tokens_per_hour = 300000
+
+[agent.capabilities]
+tools = ["file_read", "file_write", "file_list", "web_search", "web_fetch", "memory_store", "memory_recall"]
+network = ["*"]
+memory_read = ["*"]
+memory_write = ["self.*"]
+shell = []
+
+[agent.autonomous]
+max_iterations = 50
+
+[agent]
+skills = ["doc-writer"]

@@ -1,0 +1,52 @@
+id = "superpower"
+name = "Superpower"
+description = "Versatile generalist agent with broad capabilities across multiple domains"
+author = "openfang"
+version = "1.0.0"
+category = "general"
+icon = "⚡"
+tags = ["general", "assistant", "productivity", "research", "analysis"]
+
+[[settings]]
+key = "mode"
+label = "Operating Mode"
+type = "select"
+default = "balanced"
+description = "Trade-off between speed and thoroughness"
+
+[[settings.options]]
+value = "fast"
+label = "Fast (quick responses, less depth)"
+
+[[settings.options]]
+value = "balanced"
+label = "Balanced (moderate depth)"
+
+[[settings.options]]
+value = "thorough"
+label = "Thorough (deep analysis, comprehensive)"
+
+[agent.model]
+provider = "default"
+model = "default"
+max_tokens = 8192
+temperature = 0.5
+prompt_file = "SOUL.md"
+
+[agent.resources]
+max_llm_tokens_per_hour = 400000
+
+[agent.capabilities]
+tools = ["file_read", "file_write", "file_list", "shell_exec", "web_search", "web_fetch", "memory_store", "memory_recall", "agent_send", "agent_list"]
+network = ["*"]
+memory_read = ["*"]
+memory_write = ["self.*", "shared.*"]
+agent_spawn = false
+agent_message = ["*"]
+shell = ["*"]
+
+[agent.autonomous]
+max_iterations = 50
+
+[agent]
+skills = []

@@ -11218,6 +11218,230 @@ fn remove_toml_section(content: &str, section: &str) -> String {
     result
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Agent Templates API (Expert Marketplace)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// GET /api/agent-templates — List all agent templates.
+pub async fn list_agent_templates(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let templates = state.kernel.agent_templates.list();
+    let items: Vec<serde_json::Value> = templates
+        .iter()
+        .map(|t| {
+            let readiness = state.kernel.agent_templates.check_requirements(&t.id).ok();
+            serde_json::json!({
+                "id": t.id,
+                "name": t.name,
+                "description": t.description,
+                "category": format!("{}", t.category),
+                "icon": t.icon,
+                "author": t.author,
+                "version": t.version,
+                "tags": t.tags,
+                "requirements_met": readiness.as_ref().map(|r| r.requirements_met).unwrap_or(true),
+                "settings_count": t.settings.len(),
+                "has_bootstrap": t.bootstrap_content.is_some(),
+            })
+        })
+        .collect();
+
+    Json(serde_json::json!({ "templates": items, "total": items.len() }))
+}
+
+/// GET /api/agent-templates/{id} — Get a single agent template.
+pub async fn get_agent_template(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    match state.kernel.agent_templates.get(&id) {
+        Some(template) => {
+            let readiness = state
+                .kernel
+                .agent_templates
+                .check_requirements(&id)
+                .ok();
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "id": template.id,
+                    "name": template.name,
+                    "description": template.description,
+                    "long_description": template.long_description,
+                    "category": format!("{}", template.category),
+                    "icon": template.icon,
+                    "author": template.author,
+                    "version": template.version,
+                    "tags": template.tags,
+                    "requires": template.requires,
+                    "settings": template.settings,
+                    "agent": template.agent,
+                    "source": template.source,
+                    "requirements_met": readiness.as_ref().map(|r| r.requirements_met).unwrap_or(true),
+                    "requirements": readiness.map(|r| r.requirements).unwrap_or_default(),
+                })),
+            )
+                .into_response()
+        }
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Template not found" })),
+        )
+            .into_response(),
+    }
+}
+
+/// POST /api/agent-templates/{id}/instantiate — Create an agent from a template.
+pub async fn instantiate_agent_template(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(settings): Json<HashMap<String, serde_json::Value>>,
+) -> impl IntoResponse {
+    // Get the template
+    let template = match state.kernel.agent_templates.get(&id) {
+        Some(t) => t,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": "Template not found" })),
+            )
+                .into_response();
+        }
+    };
+
+    // Check requirements
+    if let Ok(readiness) = state.kernel.agent_templates.check_requirements(&id) {
+        if !readiness.requirements_met {
+            let unmet: Vec<_> = readiness
+                .requirements
+                .iter()
+                .filter(|r| !r.satisfied && !r.optional)
+                .map(|r| r.key.clone())
+                .collect();
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "Requirements not met",
+                    "missing": unmet,
+                })),
+            )
+                .into_response();
+        }
+    }
+
+    // Instantiate the manifest
+    let manifest = template.instantiate(&settings);
+
+    // Spawn the agent
+    match state.kernel.spawn_agent(manifest) {
+        Ok(agent_id) => (
+            StatusCode::CREATED,
+            Json(serde_json::json!({
+                "agent_id": agent_id.to_string(),
+                "template_id": id,
+                "message": format!("Agent created from template '{}'", template.name),
+            })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+/// GET /api/agent-templates/{id}/requirements — Check requirements for a template.
+pub async fn get_agent_template_requirements(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    match state.kernel.agent_templates.check_requirements(&id) {
+        Ok(readiness) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "template_id": id,
+                "requirements_met": readiness.requirements_met,
+                "requirements": readiness.requirements,
+            })),
+        ),
+        Err(e) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
+    }
+}
+
+/// GET /api/agent-templates/{id}/settings — Get settings for a template.
+pub async fn get_agent_template_settings(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    match state.kernel.agent_templates.get_settings_status(&id) {
+        Ok(settings) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "template_id": id,
+                "settings": settings,
+            })),
+        ),
+        Err(e) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
+    }
+}
+
+/// POST /api/agent-templates/{id}/enable — Enable a template.
+pub async fn enable_agent_template(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    match state.kernel.agent_templates.set_enabled(&id, true) {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "message": format!("Template '{}' enabled", id) })),
+        ),
+        Err(e) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
+    }
+}
+
+/// POST /api/agent-templates/{id}/disable — Disable a template.
+pub async fn disable_agent_template(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    match state.kernel.agent_templates.set_enabled(&id, false) {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "message": format!("Template '{}' disabled", id) })),
+        ),
+        Err(e) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
+    }
+}
+
+/// DELETE /api/agent-templates/{id} — Uninstall a template.
+pub async fn uninstall_agent_template(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    match state.kernel.agent_templates.uninstall(&id) {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "message": format!("Template '{}' uninstalled", id) })),
+        ),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
+    }
+}
+
 #[cfg(test)]
 mod channel_config_tests {
     use super::*;

@@ -15,6 +15,14 @@
 - [openai_compat.rs](file://crates/openfang-api/src/openai_compat.rs)
 - [stream_chunker.rs](file://crates/openfang-api/src/stream_chunker.rs)
 - [stream_dedup.rs](file://crates/openfang-api/src/stream_dedup.rs)
+- [theme.css](file://crates/openfang-api/static/css/theme.css)
+- [layout.css](file://crates/openfang-api/static/css/layout.css)
+- [components.css](file://crates/openfang-api/static/css/components.css)
+- [index_head.html](file://crates/openfang-api/static/index_head.html)
+- [index_body.html](file://crates/openfang-api/static/index_body.html)
+- [manifest.json](file://crates/openfang-api/static/manifest.json)
+- [sw.js](file://crates/openfang-api/static/sw.js)
+- [app.js](file://crates/openfang-api/static/js/app.js)
 - [Cargo.toml](file://Cargo.toml)
 - [daemon_lifecycle_test.rs](file://crates/openfang-api/tests/daemon_lifecycle_test.rs)
 </cite>
@@ -32,7 +40,7 @@
 10. [附录](#附录)
 
 ## 简介
-本文件面向 OpenFang HTTP 服务器的技术文档，系统阐述基于 Axum 的 HTTP/WebSocket API 服务如何启动、配置、注册路由、应用中间件、处理请求与流式响应，并与内核模块进行交互。文档覆盖安全与认证、速率限制、压缩与追踪、OpenAI 兼容接口、健康检查与指标、部署与监控建议以及常见问题排查。
+本文件面向 OpenFang HTTP 服务器的技术文档，系统阐述基于 Axum 的 HTTP/WebSocket API 服务如何启动、配置、注册路由、应用中间件、处理请求与流式响应，并与内核模块进行交互。文档覆盖安全与认证、速率限制、压缩与追踪、OpenAI 兼容接口、健康检查与指标、部署与监控建议以及常见问题排查。特别关注最新的UI重新设计，包括赛博朋克主题的CSS实现、HTML模板更新和PWA配置。
 
 ## 项目结构
 OpenFang 将 HTTP 服务器封装在 openfang-api crate 中，核心入口位于 server.rs，路由定义在 routes.rs，中间件与认证在 middleware.rs，WebSocket 在 ws.rs，OpenAI 兼容接口在 openai_compat.rs，静态 WebChat 资源在 webchat.rs，通道桥接在 channel_bridge.rs。构建时通过 build_router 组装 Router 并注入共享状态 AppState，随后由 run_daemon 启动监听。
@@ -53,12 +61,29 @@ SA["session_auth.rs<br/>会话令牌"]
 SC["stream_chunker.rs<br/>Markdown 流分块"]
 SD["stream_dedup.rs<br/>流重复检测"]
 end
+subgraph "静态资源"
+THEME["css/theme.css<br/>赛博朋克主题设计系统"]
+LAYOUT["css/layout.css<br/>布局与网格系统"]
+COMPONENTS["css/components.css<br/>组件样式库"]
+INDEX_HEAD["index_head.html<br/>头部模板"]
+INDEX_BODY["index_body.html<br/>主体模板"]
+MANIFEST["manifest.json<br/>PWA清单"]
+SW["sw.js<br/>服务工作者"]
+APPJS["js/app.js<br/>应用逻辑"]
+end
+WC --> THEME
+WC --> LAYOUT
+WC --> COMPONENTS
+WC --> INDEX_HEAD
+WC --> INDEX_BODY
+WC --> MANIFEST
+WC --> SW
+WC --> APPJS
 SRV --> RT
 SRV --> MID
 SRV --> RL
 SRV --> WS
 SRV --> OA
-SRV --> WC
 SRV --> CB
 RT --> TY
 WS --> TY
@@ -67,6 +92,8 @@ SRV --> SA
 WS --> SC
 WS --> SD
 ```
+
+**更新** 新增了完整的静态资源子图，包括赛博朋克主题CSS文件、HTML模板和PWA配置
 
 图示来源
 - [server.rs:30-712](file://crates/openfang-api/src/server.rs#L30-L712)
@@ -81,6 +108,14 @@ WS --> SD
 - [session_auth.rs:9-56](file://crates/openfang-api/src/session_auth.rs#L9-L56)
 - [stream_chunker.rs:6-140](file://crates/openfang-api/src/stream_chunker.rs#L6-L140)
 - [stream_dedup.rs:12-69](file://crates/openfang-api/src/stream_dedup.rs#L12-L69)
+- [theme.css:1-300](file://crates/openfang-api/static/css/theme.css#L1-L300)
+- [layout.css:1-412](file://crates/openfang-api/static/css/layout.css#L1-L412)
+- [components.css:1-3532](file://crates/openfang-api/static/css/components.css#L1-L3532)
+- [index_head.html:1-45](file://crates/openfang-api/static/index_head.html#L1-L45)
+- [index_body.html:1-4971](file://crates/openfang-api/static/index_body.html#L1-L4971)
+- [manifest.json:1-14](file://crates/openfang-api/static/manifest.json#L1-L14)
+- [sw.js:1-4](file://crates/openfang-api/static/sw.js#L1-L4)
+- [app.js:286-418](file://crates/openfang-api/static/js/app.js#L286-L418)
 
 章节来源
 - [lib.rs:1-18](file://crates/openfang-api/src/lib.rs#L1-L18)
@@ -93,8 +128,10 @@ WS --> SD
 - WebSocket：agent_ws 提供实时聊天通道，支持升级校验、连接数限制、空闲超时、消息速率限制与文本去抖。
 - OpenAI 兼容：/v1/chat/completions 与 /v1/models 提供标准兼容接口，支持 SSE 流式输出。
 - 内核交互：channel_bridge 将内核能力暴露给通道适配器；AppState 持有内核句柄与运行期缓存。
-- 静态资源：webchat 提供内置 WebChat 单页应用与 PWA 支持。
+- 静态资源：webchat 提供内置 WebChat 单页应用与 PWA 支持，包含赛博朋克主题设计系统。
 - 类型系统：types.rs 定义请求/响应结构体，确保 API 输入输出一致性。
+
+**更新** 静态资源现在包含完整的赛博朋克主题设计系统，支持主题切换和PWA功能
 
 章节来源
 - [server.rs:30-712](file://crates/openfang-api/src/server.rs#L30-L712)
@@ -354,9 +391,18 @@ ChannelBridgeHandle <|.. KernelBridgeAdapter : "实现"
 
 ### 静态资源与 WebChat
 - webchat 提供内置 WebChat 单页应用，打包编译时的 HTML/CSS/JS 与 PWA 资源，设置 ETag 与缓存控制头，支持主题切换、Markdown 渲染、WebSocket 实时聊天与 HTTP 回退。
+- **更新** 新增赛博朋克主题设计系统，包含完整的颜色变量、发光效果、玻璃拟态和动画效果。
 
-章节来源
+**章节来源**
 - [webchat.rs:77-92](file://crates/openfang-api/src/webchat.rs#L77-L92)
+- [theme.css:1-300](file://crates/openfang-api/static/css/theme.css#L1-L300)
+- [layout.css:1-412](file://crates/openfang-api/static/css/layout.css#L1-L412)
+- [components.css:1-3532](file://crates/openfang-api/static/css/components.css#L1-L3532)
+- [index_head.html:1-45](file://crates/openfang-api/static/index_head.html#L1-L45)
+- [index_body.html:1-4971](file://crates/openfang-api/static/index_body.html#L1-L4971)
+- [manifest.json:1-14](file://crates/openfang-api/static/manifest.json#L1-L14)
+- [sw.js:1-4](file://crates/openfang-api/static/sw.js#L1-L4)
+- [app.js:286-418](file://crates/openfang-api/static/js/app.js#L286-L418)
 
 ### OpenAI 兼容接口
 - /v1/chat/completions：解析 OpenAI 风格消息，支持数据 URI 图像；可选择非流式或 SSE 流式；将最后一条用户消息转为内部消息并调用内核。
@@ -410,11 +456,13 @@ DM["dashmap"] --> CACHE["缓存/跟踪"]
 - 中间件开销：开启压缩与追踪会增加 CPU 开销，建议在生产中按需启用；GCRA 限流与 CORS 评估在高并发下需关注键空间与内存占用。
 - 流式传输：合理设置文本去抖阈值与最大块大小，避免过度拆分；在长代码块场景下强制闭合 fence，减少客户端渲染压力。
 - 连接管理：WebSocket 按 IP 限流与空闲超时，防止资源耗尽；注意心跳与 Ping/Pong 处理。
+- **更新** 赛博朋克主题的CSS动画和发光效果在低端设备上可能影响性能，建议在生产环境中适当调整动画复杂度。
 
 章节来源
 - [Cargo.toml:148-160](file://Cargo.toml#L148-L160)
 - [ws.rs:35-46](file://crates/openfang-api/src/ws.rs#L35-L46)
 - [stream_chunker.rs:19-140](file://crates/openfang-api/src/stream_chunker.rs#L19-L140)
+- [theme.css:224-299](file://crates/openfang-api/static/css/theme.css#L224-L299)
 
 ## 故障排除指南
 - 401 未授权：确认 Authorization 头或 X-API-Key 是否正确；若启用仪表盘认证，检查会话 Cookie 是否有效且未过期。
@@ -423,6 +471,7 @@ DM["dashmap"] --> CACHE["缓存/跟踪"]
 - 健康检查：访问 /api/health 与 /api/health/detail；若返回 5xx，查看日志与内核状态。
 - 配置热重载：修改配置文件后约 30 秒生效；若无变化，检查文件权限与路径。
 - 守护进程冲突：若启动时报“另一个守护进程已在运行”，清理旧的守护进程信息文件后重启。
+- **更新** 主题显示异常：检查浏览器是否支持CSS变量和现代动画特性；确认网络连接正常以加载字体和资源。
 
 章节来源
 - [middleware.rs:62-215](file://crates/openfang-api/src/middleware.rs#L62-L215)
@@ -432,7 +481,7 @@ DM["dashmap"] --> CACHE["缓存/跟踪"]
 - [daemon_lifecycle_test.rs:120-153](file://crates/openfang-api/tests/daemon_lifecycle_test.rs#L120-L153)
 
 ## 结论
-OpenFang HTTP 服务器以 Axum 为核心，通过清晰的中间件管道、严格的认证与安全策略、完善的流式传输与 OpenAI 兼容接口，实现了高性能、可观测、可扩展的代理管理与聊天服务。结合内核模块与通道桥接，形成从 REST 到 WebSocket 的全栈能力，适合在生产环境中部署与运维。
+OpenFang HTTP 服务器以 Axum 为核心，通过清晰的中间件管道、严格的认证与安全策略、完善的流式传输与 OpenAI 兼容接口，实现了高性能、可观测、可扩展的代理管理与聊天服务。结合内核模块与通道桥接，形成从 REST 到 WebSocket 的全栈能力，适合在生产环境中部署与运维。最新的UI重新设计引入了赛博朋克主题的CSS实现，提供了现代化的视觉体验和良好的用户体验。
 
 ## 附录
 
@@ -463,3 +512,41 @@ OpenFang HTTP 服务器以 Axum 为核心，通过清晰的中间件管道、严
 章节来源
 - [Cargo.toml:44-45](file://Cargo.toml#L44-L45)
 - [server.rs:759-760](file://crates/openfang-api/src/server.rs#L759-L760)
+
+### 赛博朋克主题设计系统
+
+**更新** 新增赛博朋克主题设计系统的详细说明
+
+OpenFang 采用了完整的赛博朋克主题设计系统，包含以下核心特性：
+
+#### 主题色彩系统
+- **背景层次**：深空渐变基础色，包括 `--bg`、`--bg-primary`、`--bg-elevated` 等多层背景色
+- **文本系统**：高对比度文本层次，从主文本 `--text` 到次要文本 `--text-secondary` 和消隐文本 `--text-muted`
+- **品牌色彩**：霓虹青色 `--accent` (#00f5ff) 和霓虹紫色 `--accent2` (#b829dd) 的双色系统
+- **状态色彩**：成功绿色、错误红色、警告黄色、信息蓝色的霓虹变体
+
+#### 视觉效果
+- **发光效果**：`--glow-cyan`、`--glow-purple` 等发光阴影效果
+- **玻璃拟态**：`--glass-bg`、`--glass-border` 等半透明背景和边框
+- **动画系统**：`fadeIn`、`slideUp`、`scaleIn` 等入场动画和 `shimmer`、`pulse-ring` 等动态效果
+- **阴影系统**：从 `--shadow-xs` 到 `--shadow-xl` 的多层次阴影
+
+#### 主题切换机制
+- **三种模式**：light（亮色）、dark（暗色）、system（系统跟随）
+- **本地存储**：使用 localStorage 保存用户偏好的主题模式
+- **系统感知**：当设置为 system 模式时，自动跟随操作系统的深色/浅色偏好
+
+#### PWA 支持
+- **渐进式Web应用**：完整的 PWA 清单文件和 Service Worker
+- **离线支持**：基础的 Service Worker 实现，支持基本的离线访问
+- **安装支持**：支持桌面和移动设备的应用安装
+
+**章节来源**
+- [theme.css:1-300](file://crates/openfang-api/static/css/theme.css#L1-L300)
+- [layout.css:1-200](file://crates/openfang-api/static/css/layout.css#L1-L200)
+- [components.css:1-200](file://crates/openfang-api/static/css/components.css#L1-L200)
+- [index_head.html:1-45](file://crates/openfang-api/static/index_head.html#L1-L45)
+- [index_body.html:1-4971](file://crates/openfang-api/static/index_body.html#L1-L4971)
+- [manifest.json:1-14](file://crates/openfang-api/static/manifest.json#L1-L14)
+- [sw.js:1-4](file://crates/openfang-api/static/sw.js#L1-L4)
+- [app.js:286-418](file://crates/openfang-api/static/js/app.js#L286-L418)

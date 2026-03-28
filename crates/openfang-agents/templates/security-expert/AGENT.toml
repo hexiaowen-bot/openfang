@@ -1,0 +1,58 @@
+id = "security-expert"
+name = "Security Expert"
+description = "Security audit and vulnerability detection specialist with deep knowledge of OWASP and secure coding practices"
+author = "openfang"
+version = "1.0.0"
+category = "security"
+icon = "🔒"
+tags = ["security", "audit", "vulnerability", "owasp", "penetration-testing"]
+
+[[requires]]
+key = "git"
+label = "Git"
+type = "binary"
+check_value = "git"
+optional = true
+description = "For cloning security tools and auditing repositories"
+
+[[settings]]
+key = "depth"
+label = "Audit Depth"
+type = "select"
+default = "standard"
+description = "How thorough the security analysis should be"
+
+[[settings.options]]
+value = "quick"
+label = "Quick Scan (obvious issues only)"
+
+[[settings.options]]
+value = "standard"
+label = "Standard (common vulnerabilities)"
+
+[[settings.options]]
+value = "deep"
+label = "Deep Audit (comprehensive)"
+
+[agent.model]
+provider = "default"
+model = "default"
+max_tokens = 8192
+temperature = 0.2
+prompt_file = "SOUL.md"
+
+[agent.resources]
+max_llm_tokens_per_hour = 300000
+
+[agent.capabilities]
+tools = ["file_read", "file_list", "shell_exec", "web_search", "web_fetch", "memory_store", "memory_recall"]
+network = ["*"]
+memory_read = ["*"]
+memory_write = ["self.*"]
+shell = ["*"]
+
+[agent.autonomous]
+max_iterations = 100
+
+[agent]
+skills = ["security-auditor"]

@@ -14,6 +14,13 @@
 - [tui/mod.rs](file://crates/openfang-cli/src/tui/mod.rs)
 </cite>
 
+## 更新摘要
+**所做更改**
+- 移除了所有关于迁移命令（migrate）的内容和相关说明
+- 删除了从 OpenClaw、LangChain 或 AutoGPT 迁移能力的相关描述
+- 更新了技能管理部分，移除了 OpenClaw 兼容性转换功能的说明
+- 更新了架构图，移除了迁移相关的组件
+
 ## 目录
 1. [简介](#简介)
 2. [项目结构](#项目结构)
@@ -65,7 +72,7 @@ Parser --> Sessions["sessions 会话"]
 Parser --> Logs["logs 日志"]
 Parser --> Health["health 健康快速检查"]
 Parser --> Security["security 安全审计"]
-Parser --> Memory["memory 内存键值"]
+Parser --> Memory["memory 智能体内存"]
 Parser --> Devices["devices 设备"]
 Parser --> Qr["qr 设备配对码"]
 Parser --> Webhooks["webhooks Webhook"]
@@ -232,7 +239,7 @@ end
   - 选项：--agent-id（可选，按智能体过滤）。
 - trigger create
   - 作用：为智能体创建触发器。
-  - 参数：agent_id（UUID）、pattern-json（触发模式 JSON）、prompt（提示词模板，默认值为“事件：{{event}}”）、max-fires（最大触发次数，默认 0 无限）。
+  - 参数：agent_id（UUID）、pattern-json（触发模式 JSON）、prompt（提示词模板，默认值为"事件：{{event}}"）、max-fires（最大触发次数，默认 0 无限）。
 - trigger delete
   - 作用：按 ID 删除触发器。
   - 参数：trigger_id（UUID）。
@@ -254,6 +261,8 @@ end
   - 参数：query（搜索关键词）。
 - skill create
   - 作用：创建新的技能模板。
+
+**更新** 移除了对 OpenClaw 兼容性转换功能的说明，因为迁移命令已被完全移除。
 
 章节来源
 - [main.rs:321-341](file://crates/openfang-cli/src/main.rs#L321-L341)
