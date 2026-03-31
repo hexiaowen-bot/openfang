@@ -6,6 +6,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use dashmap::DashMap;
+use serde::Deserialize;
 use openfang_kernel::triggers::{TriggerId, TriggerPattern};
 use openfang_kernel::workflow::{
     ErrorMode, StepAgent, StepMode, Workflow, WorkflowId, WorkflowStep,
@@ -11440,6 +11441,206 @@ pub async fn uninstall_agent_template(
             Json(serde_json::json!({ "error": e.to_string() })),
         ),
     }
+}
+
+/// Request to submit an orchestration task.
+#[derive(Debug, Deserialize)]
+pub struct SubmitOrchestrationRequest {
+    /// User's task description.
+    pub description: String,
+    /// Channel to send responses to.
+    #[serde(default)]
+    pub channel: Option<String>,
+    /// Force a specific complexity level.
+    #[serde(default)]
+    pub force_complexity: Option<openfang_types::orchestrator::ComplexityLevel>,
+}
+
+/// Request to cleanup idle agents.
+#[derive(Debug, Deserialize)]
+pub struct CleanupIdleAgentsRequest {
+    /// Maximum idle seconds before an agent is considered for cleanup.
+    pub max_idle_secs: u64,
+}
+
+/// POST /api/orchestrator/tasks — Submit a new orchestration task.
+pub async fn submit_orchestration_task(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<SubmitOrchestrationRequest>,
+) -> impl IntoResponse {
+    use chrono::Utc;
+    use openfang_types::orchestrator::{OrchestrationRequest, TaskId};
+
+    let task_id = TaskId::new();
+    let request = OrchestrationRequest {
+        id: task_id,
+        description: req.description,
+        channel: req.channel,
+        deadline: None,
+        force_complexity: req.force_complexity,
+        created_at: Utc::now(),
+    };
+
+    // Submit to orchestrator and get analysis
+    let analysis = {
+        // The submit method returns TaskId, we need to get the context to return analysis
+        let _ = state.kernel.orchestrator.submit(request);
+        // Get the context to extract analysis results
+        state.kernel.orchestrator.get_context(&task_id)
+    };
+
+    match analysis {
+        Some(context) => {
+            let response = serde_json::json!({
+                "task_id": task_id.to_string(),
+                "analysis": {
+                    "complexity": context.complexity,
+                    "strategy": context.strategy,
+                    "state": context.state,
+                }
+            });
+            (StatusCode::CREATED, Json(response))
+        }
+        None => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": "Failed to create orchestration context"})),
+        ),
+    }
+}
+
+/// POST /api/orchestrator/tasks/:id/execute — Execute a submitted orchestration task.
+pub async fn execute_orchestration_task(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    use openfang_types::orchestrator::TaskId;
+    use std::str::FromStr;
+
+    let task_id = match TaskId::from_str(&id) {
+        Ok(tid) => tid,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid task ID"})),
+            );
+        }
+    };
+
+    match state.kernel.orchestrator.execute(&task_id) {
+        Ok(output) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "task_id": id,
+                "status": "completed",
+                "output": output,
+            })),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e})),
+        ),
+    }
+}
+
+/// GET /api/orchestrator/tasks/:id — Get orchestration task status and context.
+pub async fn get_orchestration_task(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    use openfang_types::orchestrator::TaskId;
+    use std::str::FromStr;
+
+    let task_id = match TaskId::from_str(&id) {
+        Ok(tid) => tid,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid task ID"})),
+            );
+        }
+    };
+
+    match state.kernel.orchestrator.get_context(&task_id) {
+        Some(context) => (StatusCode::OK, Json(serde_json::to_value(context).unwrap_or_default())),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "Task not found"})),
+        ),
+    }
+}
+
+/// GET /api/orchestrator/tasks — List all orchestration tasks.
+pub async fn list_orchestration_tasks(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let executions = state.kernel.orchestrator.list_executions();
+    Json(executions)
+}
+
+/// DELETE /api/orchestrator/tasks/:id — Cancel an orchestration task.
+pub async fn cancel_orchestration_task(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    use openfang_types::orchestrator::TaskId;
+    use std::str::FromStr;
+
+    let task_id = match TaskId::from_str(&id) {
+        Ok(tid) => tid,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid task ID"})),
+            );
+        }
+    };
+
+    let cancelled = state.kernel.orchestrator.cancel(&task_id);
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "cancelled": cancelled })),
+    )
+}
+
+/// GET /api/orchestrator/agents — List all managed agents.
+pub async fn list_managed_agents(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let agents = state.kernel.orchestrator.get_lifecycle().list();
+    Json(agents)
+}
+
+/// GET /api/orchestrator/agents/:id/retention — Evaluate agent retention decision.
+pub async fn get_agent_retention(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    use openfang_types::agent::AgentId;
+    use std::str::FromStr;
+
+    let agent_id = match AgentId::from_str(&id) {
+        Ok(aid) => aid,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid agent ID"})),
+            );
+        }
+    };
+
+    match state.kernel.orchestrator.get_lifecycle().evaluate_retention(&agent_id) {
+        Some(decision) => (StatusCode::OK, Json(serde_json::to_value(decision).unwrap_or_default())),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "Agent not found"})),
+        ),
+    }
+}
+
+/// POST /api/orchestrator/agents/cleanup — Cleanup idle agents.
+pub async fn cleanup_idle_agents(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CleanupIdleAgentsRequest>,
+) -> impl IntoResponse {
+    let cleaned = state.kernel.orchestrator.get_lifecycle().cleanup_idle(req.max_idle_secs);
+    let cleaned_ids: Vec<String> = cleaned.iter().map(|id| id.to_string()).collect();
+    Json(serde_json::json!({ "cleaned": cleaned_ids }))
 }
 
 #[cfg(test)]

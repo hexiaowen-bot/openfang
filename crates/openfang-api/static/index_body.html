@@ -92,6 +92,10 @@
               <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M6 3v12M18 9a9 9 0 0 1-9 9"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/></svg></span>
               <span class="nav-label">Workflows</span>
             </a>
+            <a class="nav-item" :class="{ active: page === 'orchestrator' }" @click="navigate('orchestrator')" :aria-current="page === 'orchestrator' ? 'page' : false">
+              <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/><line x1="12" y1="8" x2="5" y2="16"/><line x1="12" y1="8" x2="19" y2="16"/></svg></span>
+              <span class="nav-label">Orchestrator</span>
+            </a>
             <a class="nav-item" :class="{ active: page === 'scheduler' }" @click="navigate('scheduler')" :aria-current="page === 'scheduler' ? 'page' : false">
               <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span>
               <span class="nav-label">Scheduler</span>
@@ -1286,6 +1290,181 @@
               </div>
             </div>
           </template>
+        </div>
+      </div>
+    </template>
+
+    <!-- Page: Orchestrator -->
+    <template x-if="page === 'orchestrator'">
+      <div x-data="orchestratorPage()" x-init="init()" @destroy="destroy()" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden">
+        <div class="page-header">
+          <h2>Orchestrator</h2>
+          <div class="flex gap-2">
+            <button class="btn btn-ghost btn-sm" @click="cleanupAgents()">Cleanup Agents</button>
+          </div>
+        </div>
+        <div class="page-body" x-init="refresh()">
+          <!-- Stats row -->
+          <div class="stats-row" style="margin-bottom:16px">
+            <div class="stat-card">
+              <div class="stat-value" x-text="stats.total"></div>
+              <div class="stat-label">Total Tasks</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" style="color:var(--info)" x-text="stats.running"></div>
+              <div class="stat-label">Running</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" style="color:var(--success)" x-text="stats.completed"></div>
+              <div class="stat-label">Completed</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" style="color:var(--error)" x-text="stats.failed"></div>
+              <div class="stat-label">Failed</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" x-text="stats.agents"></div>
+              <div class="stat-label">Agents</div>
+            </div>
+          </div>
+
+          <!-- Task submission -->
+          <div class="card mb-4" style="border-left:3px solid var(--accent)">
+            <div class="card-header">Submit New Task</div>
+            <div class="form-group" style="margin-top:8px">
+              <textarea class="form-textarea" x-model="taskDescription" placeholder="Describe what you want to accomplish..." rows="2" style="resize:vertical"></textarea>
+            </div>
+            <div class="flex gap-2 items-center" style="margin-top:8px">
+              <select class="form-select" style="width:140px" x-model="forceComplexity">
+                <option value="">Auto Complexity</option>
+                <option value="Simple">Simple</option>
+                <option value="Medium">Medium</option>
+                <option value="Complex">Complex</option>
+              </select>
+              <button class="btn btn-primary btn-sm" @click="submitTask()" :disabled="submitting || !taskDescription || !taskDescription.trim()">
+                <span x-show="!submitting">Submit</span>
+                <span x-show="submitting">Submitting...</span>
+              </button>
+            </div>
+            <div class="mt-3" x-show="lastAnalysis">
+              <div class="text-xs text-dim mb-1">Last Analysis:</div>
+              <div class="card" style="padding:10px;font-size:12px">
+                <div><strong>Complexity:</strong> <span x-text="lastAnalysis && lastAnalysis.complexity"></span></div>
+                <div x-show="lastAnalysis && lastAnalysis.reason"><strong>Reason:</strong> <span x-text="lastAnalysis && lastAnalysis.reason"></span></div>
+                <div x-show="lastTaskId"><strong>Task ID:</strong> <code x-text="lastTaskId"></code></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tasks table -->
+          <div class="card mb-4">
+            <div class="card-header">Tasks</div>
+            <div class="table-wrap" x-show="tasks.length">
+              <table>
+                <thead><tr><th>ID</th><th>Description</th><th>Complexity</th><th>State</th><th>Created</th><th>Actions</th></tr></thead>
+                <tbody>
+                  <template x-for="task in tasks" :key="task.id">
+                    <tr>
+                      <td><code style="font-size:11px" x-text="task.id.substring(0,8) + '...'">"</code></td>
+                      <td><span x-text="truncate(task.description, 50)"></span></td>
+                      <td><span class="badge" style="background:var(--accent-subtle);color:var(--accent)" x-text="task.complexity || '-'">"</span></td>
+                      <td>
+                        <span class="badge" :style="'background:' + stateColor(task.state) + ';color:' + stateTextColor(task.state)" x-text="task.state">"</span>
+                      </td>
+                      <td class="text-xs" x-text="formatTime(task.created_at)"></td>
+                      <td>
+                        <button class="btn btn-primary btn-sm" x-show="task.state === 'Pending'" @click="executeTask(task.id)">Execute</button>
+                        <button class="btn btn-ghost btn-sm" @click="viewTask(task.id)">View</button>
+                        <button class="btn btn-danger btn-sm" x-show="task.state === 'Running' || task.state === 'Pending'" @click="cancelTask(task.id)">Cancel</button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <div class="empty-state" x-show="!tasks.length">
+              <div class="empty-state-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/><line x1="12" y1="8" x2="5" y2="16"/><line x1="12" y1="8" x2="19" y2="16"/></svg>
+              </div>
+              <h3>No tasks yet</h3>
+              <p>Submit a task to get started with orchestrated execution.</p>
+            </div>
+          </div>
+
+          <!-- Task detail modal -->
+          <template x-if="selectedTask">
+            <div class="modal-overlay" @click.self="closeTaskDetail()" @keydown.escape.window="closeTaskDetail()">
+              <div class="modal">
+                <div class="modal-header">
+                  <h3>Task Details</h3>
+                  <button class="modal-close" @click="closeTaskDetail()">&times;</button>
+                </div>
+                <div class="detail-grid">
+                  <div class="detail-item"><span class="detail-label">ID</span><span class="detail-value" x-text="selectedTask.id"></span></div>
+                  <div class="detail-item"><span class="detail-label">State</span><span class="badge" :style="'background:' + stateColor(selectedTask.state) + ';color:' + stateTextColor(selectedTask.state)" x-text="selectedTask.state"></span></div>
+                  <div class="detail-item"><span class="detail-label">Complexity</span><span class="detail-value" x-text="selectedTask.complexity || '-'"></span></div>
+                  <div class="detail-item"><span class="detail-label">Description</span><span class="detail-value" x-text="selectedTask.description"></span></div>
+                </div>
+                <div x-show="selectedTask.execution_path && selectedTask.execution_path.length">
+                  <div class="card-header" style="margin-top:12px">Execution Path</div>
+                  <div class="card" style="margin-top:8px;padding:10px">
+                    <template x-for="(step, i) in selectedTask.execution_path" :key="i">
+                      <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-light)">
+                        <span class="badge" style="background:var(--accent-subtle);color:var(--accent)" x-text="i + 1"></span>
+                        <span x-text="step.skill || step.action || 'Step'"></span>
+                        <span class="text-xs text-dim" x-show="step.agent" x-text="'→ ' + step.agent"></span>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+                <div x-show="selectedTask.assigned_agents && selectedTask.assigned_agents.length">
+                  <div class="card-header" style="margin-top:12px">Assigned Agents</div>
+                  <div class="card-flex" style="margin-top:8px">
+                    <template x-for="agent in selectedTask.assigned_agents" :key="agent">
+                      <span class="badge" style="background:var(--info-muted);color:var(--info)" x-text="agent"></span>
+                    </template>
+                  </div>
+                </div>
+                <div x-show="selectedTask.metrics">
+                  <div class="card-header" style="margin-top:12px">Metrics</div>
+                  <div class="detail-grid" style="margin-top:8px">
+                    <template x-for="(val, key) in selectedTask.metrics" :key="key">
+                      <div class="detail-item"><span class="detail-label" x-text="key"></span><span class="detail-value" x-text="val"></span></div>
+                    </template>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- Agent pool -->
+          <div class="card">
+            <div class="card-header">Agent Pool <span class="badge badge-dim" x-text="agents.length"></span></div>
+            <div class="table-wrap" x-show="agents.length">
+              <table>
+                <thead><tr><th>Agent</th><th>Retention</th><th>Use Count</th><th>Success Rate</th><th>Last Used</th><th>Actions</th></tr></thead>
+                <tbody>
+                  <template x-for="agent in agents" :key="agent.id">
+                    <tr>
+                      <td><span class="font-bold" x-text="agent.name || agent.id"></span></td>
+                      <td>
+                        <span class="badge" :style="'background:' + retentionColor(agent.retention) + ';color:' + retentionTextColor(agent.retention)" x-text="agent.retention"></span>
+                      </td>
+                      <td x-text="agent.use_count || 0"></td>
+                      <td x-text="successRate(agent)"></td>
+                      <td class="text-xs" x-text="formatTime(agent.last_used)"></td>
+                      <td>
+                        <button class="btn btn-ghost btn-sm" @click="evaluateRetention(agent.id)">Evaluate</button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <div class="empty-state" x-show="!agents.length">
+              <p class="text-sm text-dim">No agents in pool. Agents are created when tasks are executed.</p>
+            </div>
+          </div>
         </div>
       </div>
     </template>
@@ -3407,7 +3586,10 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
             <div class="card">
               <div class="card-header">Channel Integrations</div>
               <div style="padding:16px">
-                <p style="color:var(--text-dim);margin:0">Channel configuration has been moved. Use the <a href="#" @click.prevent="$store.app.navigate('channels')" style="color:var(--accent)">Channels page</a> for full channel management.</p>
+                <p style="color:var(--text-dim);margin:0">Configure your channel connections below. Channels enable agents to communicate through external platforms.</p>
+                <div style="margin-top:16px">
+                  <button class="btn btn-primary" @click="$store.app.navigate('channels')">Open Channels Manager</button>
+                </div>
               </div>
             </div>
           </div>

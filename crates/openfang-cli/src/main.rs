@@ -276,6 +276,9 @@ enum Commands {
     /// System info and version [*].
     #[command(subcommand)]
     System(SystemCommands),
+    /// Manage swarm workflows (list, show, run, status, validate) [*].
+    #[command(subcommand)]
+    Swarm(SwarmCommands),
     /// Reset local config and state.
     Reset {
         /// Skip confirmation prompt.
@@ -776,6 +779,47 @@ enum SystemCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum SwarmCommands {
+    /// List all loaded swarm definitions.
+    List,
+    /// Show detailed information about a swarm.
+    Show {
+        /// Swarm definition ID.
+        id: String,
+    },
+    /// Run a swarm execution.
+    Run {
+        /// Swarm definition ID.
+        id: String,
+        /// Input parameters as key=value pairs (can be specified multiple times).
+        #[arg(long, value_parser = parse_key_value)]
+        input: Vec<(String, String)>,
+    },
+    /// Get the status of a swarm execution.
+    Status {
+        /// Swarm execution ID.
+        execution_id: String,
+    },
+    /// Validate a Swarm.toml file without executing.
+    Validate {
+        /// Path to the Swarm.toml file.
+        file: PathBuf,
+    },
+}
+
+/// Parse a key=value pair for command line arguments.
+fn parse_key_value(s: &str) -> Result<(String, String), String> {
+    match s.find('=') {
+        Some(pos) => {
+            let key = s[..pos].to_string();
+            let value = s[pos + 1..].to_string();
+            Ok((key, value))
+        }
+        None => Err(format!("Invalid key=value format: {}", s)),
+    }
+}
+
 fn config_log_level() -> String {
     let config_path = if let Ok(home) = std::env::var("OPENFANG_HOME") {
         std::path::PathBuf::from(home).join("config.toml")
@@ -1063,6 +1107,13 @@ fn main() {
         Some(Commands::System(sub)) => match sub {
             SystemCommands::Info { json } => cmd_system_info(json),
             SystemCommands::Version { json } => cmd_system_version(json),
+        },
+        Some(Commands::Swarm(sub)) => match sub {
+            SwarmCommands::List => cmd_swarm_list(),
+            SwarmCommands::Show { id } => cmd_swarm_show(&id),
+            SwarmCommands::Run { id, input } => cmd_swarm_run(&id, input),
+            SwarmCommands::Status { execution_id } => cmd_swarm_status(&execution_id),
+            SwarmCommands::Validate { file } => cmd_swarm_validate(file),
         },
         Some(Commands::Reset { confirm }) => cmd_reset(confirm),
         Some(Commands::Uninstall {
@@ -6186,6 +6237,366 @@ fn cmd_system_version(json: bool) {
         return;
     }
     println!("openfang {}", env!("CARGO_PKG_VERSION"));
+}
+
+// ---------------------------------------------------------------------------
+// Swarm commands
+// ---------------------------------------------------------------------------
+
+fn cmd_swarm_list() {
+    let base = require_daemon("swarm list");
+    let client = daemon_client();
+    let body = daemon_json(client.get(format!("{base}/api/swarm/definitions")).send());
+
+    if let Some(arr) = body.as_array() {
+        if arr.is_empty() {
+            println!("No swarm definitions loaded.");
+            return;
+        }
+        let mut table = crate::table::Table::new(&["ID", "Name", "Version", "Steps"]);
+        table = table.align(3, crate::table::Align::Right);
+        for def in arr {
+            let id = def["id"].as_str().unwrap_or("?");
+            let name = def["name"].as_str().unwrap_or("?");
+            let version = def["version"].as_str().unwrap_or("?");
+            let steps = def["steps"].as_array().map(|s| s.len()).unwrap_or(0);
+            table.add_row(&[id, name, version, &steps.to_string()]);
+        }
+        table.print();
+    } else {
+        println!("No swarm definitions loaded.");
+    }
+}
+
+fn cmd_swarm_show(id: &str) {
+    let base = require_daemon("swarm show");
+    let client = daemon_client();
+    let body = daemon_json(client.get(format!("{base}/api/swarm/definitions/{id}")).send());
+
+    if body["error"].as_str().is_some() {
+        ui::error(&format!("Swarm definition '{}' not found", id));
+        std::process::exit(1);
+    }
+
+    let name = body["name"].as_str().unwrap_or("?");
+    let version = body["version"].as_str().unwrap_or("?");
+    let description = body["description"].as_str().unwrap_or("");
+
+    ui::section(&format!("Swarm: {}", name));
+    ui::kv("ID", id);
+    ui::kv("Version", version);
+    if !description.is_empty() {
+        ui::kv("Description", description);
+    }
+
+    // Input parameters
+    if let Some(input) = body["input"].as_object() {
+        ui::blank();
+        println!("  {}", "Input Parameters:".bold());
+        if let Some(required) = input["required"].as_array() {
+            if !required.is_empty() {
+                println!("    {}:", "Required".bold());
+                for r in required {
+                    if let Some(key) = r.as_str() {
+                        println!("      • {}", key.bright_yellow());
+                    }
+                }
+            }
+        }
+        if let Some(optional) = input["optional"].as_object() {
+            if !optional.is_empty() {
+                println!("    {}:", "Optional".bold());
+                for (key, value) in optional {
+                    let val_str = value.as_str().map(|s| s.to_string()).unwrap_or_else(|| value.to_string());
+                    println!("      • {} = {}", key, val_str.dimmed());
+                }
+            }
+        }
+    }
+
+    // Steps
+    if let Some(steps) = body["steps"].as_array() {
+        ui::blank();
+        println!("  {} ({} steps)", "Steps:".bold(), steps.len());
+        for (i, step) in steps.iter().enumerate() {
+            let step_id = step["id"].as_str().unwrap_or("?");
+            let step_name = step["name"].as_str().unwrap_or("?");
+            let hand = step["hand"].as_str().unwrap_or("?");
+            let deps = step["depends_on"].as_array()
+                .map(|d| d.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", "))
+                .unwrap_or_default();
+
+            println!(
+                "    {}. {} {} {}",
+                i + 1,
+                step_id.bright_cyan(),
+                format!("({})", step_name).dimmed(),
+                format!("[hand: {}]", hand).dimmed()
+            );
+            if !deps.is_empty() {
+                println!("       {} {}", "depends on:".dimmed(), deps.dimmed());
+            }
+        }
+    }
+
+    // Settings
+    if let Some(settings) = body["settings"].as_object() {
+        if !settings.is_empty() {
+            ui::blank();
+            println!("  {}", "Settings:".bold());
+            for (key, value) in settings {
+                if !value.is_null() {
+                    let val_str = value.as_str().map(|s| s.to_string()).unwrap_or_else(|| value.to_string());
+                    println!("    {}: {}", key, val_str);
+                }
+            }
+        }
+    }
+}
+
+fn cmd_swarm_run(id: &str, input: Vec<(String, String)>) {
+    let base = require_daemon("swarm run");
+
+    // Convert input pairs to JSON object
+    let input_map: std::collections::HashMap<String, serde_json::Value> = input
+        .into_iter()
+        .map(|(k, v)| (k, serde_json::Value::String(v)))
+        .collect();
+
+    let client = daemon_client();
+
+    ui::section(&format!("Running swarm: {}", id));
+
+    let payload = serde_json::json!({
+        "definition_id": id,
+        "input": input_map
+    });
+
+    let body = daemon_json(
+        client
+            .post(format!("{base}/api/swarm/executions"))
+            .json(&payload)
+            .send(),
+    );
+
+    if let Some(error) = body["error"].as_str() {
+        ui::error(&format!("Failed to start swarm: {}", error));
+        std::process::exit(1);
+    }
+
+    let exec_id = body["execution_id"].as_str().unwrap_or("?");
+    ui::kv("Execution ID", exec_id);
+    ui::blank();
+
+    // Poll for execution status
+    let mut spinner = crate::progress::Spinner::new("Executing swarm...");
+    let start = std::time::Instant::now();
+
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        let status_body = daemon_json(
+            client
+                .get(format!("{base}/api/swarm/executions/{exec_id}"))
+                .send(),
+        );
+
+        let status = status_body["status"].as_str().unwrap_or("unknown");
+
+        // Print step progress
+        if let Some(step_results) = status_body["step_results"].as_object() {
+            if let Some((last_step_id, last_result)) = step_results.iter().last() {
+                let step_status = last_result["status"].as_str().unwrap_or("unknown");
+                spinner.set_label(&format!("Executing: {} ({})", last_step_id, step_status));
+            }
+        }
+        spinner.tick();
+
+        match status {
+            "completed" => {
+                spinner.finish();
+                ui::success(&format!("Swarm completed in {:.1}s", start.elapsed().as_secs_f64()));
+
+                if let Some(output) = status_body["output"].as_object() {
+                    ui::blank();
+                    println!("  {}", "Output:".bold());
+                    for (key, value) in output {
+                        let val_str = value.as_str().map(|s| s.to_string()).unwrap_or_else(|| value.to_string());
+                        println!("    {}: {}", key.bright_cyan(), val_str);
+                    }
+                }
+                break;
+            }
+            "failed" => {
+                spinner.finish();
+                ui::error(&format!("Swarm failed after {:.1}s: {}",
+                    start.elapsed().as_secs_f64(),
+                    status_body["error"].as_str().unwrap_or("Unknown error")));
+                std::process::exit(1);
+            }
+            "cancelled" => {
+                spinner.finish();
+                ui::error(&format!("Swarm cancelled after {:.1}s", start.elapsed().as_secs_f64()));
+                std::process::exit(1);
+            }
+            _ => continue, // Still running or pending
+        }
+    }
+}
+
+fn cmd_swarm_status(execution_id: &str) {
+    let base = require_daemon("swarm status");
+    let client = daemon_client();
+    let body = daemon_json(
+        client
+            .get(format!("{base}/api/swarm/executions/{execution_id}"))
+            .send(),
+    );
+
+    if body["error"].as_str().is_some() {
+        ui::error(&format!("Execution '{}' not found", execution_id));
+        std::process::exit(1);
+    }
+
+    let status = body["status"].as_str().unwrap_or("unknown");
+    let def_id = body["definition_id"].as_str().unwrap_or("?");
+
+    ui::section(&format!("Swarm Execution: {}", execution_id));
+
+    let status_colored = match status {
+        "completed" => status.bright_green(),
+        "failed" => status.bright_red(),
+        "running" => status.bright_yellow(),
+        "pending" => status.dimmed(),
+        _ => status.normal(),
+    };
+    ui::kv("Status", &status_colored.to_string());
+    ui::kv("Definition ID", def_id);
+
+    if let Some(started) = body["started_at"].as_str() {
+        ui::kv("Started", started);
+    }
+    if let Some(completed) = body["completed_at"].as_str() {
+        ui::kv("Completed", completed);
+    }
+
+    // Calculate total duration and tokens
+    let mut total_tokens: u64 = 0;
+    let mut total_duration_ms: u64 = 0;
+
+    if let Some(step_results) = body["step_results"].as_object() {
+        ui::blank();
+        println!("  {} ({} steps)", "Step Results:".bold(), step_results.len());
+
+        let mut table = crate::table::Table::new(&["Step", "Status", "Duration", "Tokens"]);
+        table = table.align(2, crate::table::Align::Right).align(3, crate::table::Align::Right);
+
+        for (step_id, result) in step_results {
+            let step_status = result["status"].as_str().unwrap_or("unknown");
+            let duration_ms = result["duration_ms"].as_u64().unwrap_or(0);
+            let input_tokens = result["input_tokens"].as_u64().unwrap_or(0);
+            let output_tokens = result["output_tokens"].as_u64().unwrap_or(0);
+            let step_tokens = input_tokens + output_tokens;
+
+            total_tokens += step_tokens;
+            total_duration_ms += duration_ms;
+
+            let status_symbol = match step_status {
+                "completed" => "✔".bright_green(),
+                "failed" => "✘".bright_red(),
+                "running" => "●".bright_yellow(),
+                "pending" => "○".dimmed(),
+                "skipped" => "⊘".dimmed(),
+                _ => "?".normal(),
+            };
+
+            let duration_str = if duration_ms > 0 {
+                format!("{:.1}s", duration_ms as f64 / 1000.0)
+            } else {
+                "-".to_string()
+            };
+
+            let tokens_str = if step_tokens > 0 {
+                step_tokens.to_string()
+            } else {
+                "-".to_string()
+            };
+
+            table.add_row(&[
+                step_id,
+                &format!("{} {}", status_symbol, step_status),
+                &duration_str,
+                &tokens_str,
+            ]);
+        }
+        table.print();
+
+        ui::blank();
+        ui::kv("Total Duration", &format!("{:.1}s", total_duration_ms as f64 / 1000.0));
+        if total_tokens > 0 {
+            ui::kv("Total Tokens", &total_tokens.to_string());
+        }
+    }
+
+    if let Some(error) = body["error"].as_str() {
+        ui::blank();
+        ui::error(&format!("Error: {}", error));
+    }
+
+    if let Some(output) = body["output"].as_object() {
+        if !output.is_empty() {
+            ui::blank();
+            println!("  {}", "Output:".bold());
+            for (key, value) in output {
+                let val_str = value.as_str().map(|s| s.to_string()).unwrap_or_else(|| value.to_string());
+                println!("    {}: {}", key.bright_cyan(), val_str);
+            }
+        }
+    }
+}
+
+fn cmd_swarm_validate(file: PathBuf) {
+    if !file.exists() {
+        ui::error(&format!("File not found: {}", file.display()));
+        std::process::exit(1);
+    }
+
+    let content = std::fs::read_to_string(&file).unwrap_or_else(|e| {
+        ui::error(&format!("Failed to read file: {}", e));
+        std::process::exit(1);
+    });
+
+    ui::section(&format!("Validating: {}", file.display()));
+
+    // Use the kernel's SwarmParser for validation
+    match openfang_kernel::swarm_parser::SwarmParser::parse_toml(&content) {
+        Ok(definition) => {
+            match openfang_kernel::swarm_parser::SwarmParser::validate(&definition) {
+                Ok(()) => {
+                    ui::success("Swarm definition is valid");
+                    ui::blank();
+                    ui::kv("ID", &definition.id);
+                    ui::kv("Name", &definition.name);
+                    ui::kv("Version", &definition.version);
+                    ui::kv("Steps", &definition.steps.len().to_string());
+
+                    if let Some(desc) = &definition.description {
+                        if !desc.is_empty() {
+                            ui::kv("Description", desc);
+                        }
+                    }
+                }
+                Err(e) => {
+                    ui::error(&format!("Validation failed: {}", e));
+                    std::process::exit(1);
+                }
+            }
+        }
+        Err(e) => {
+            ui::error(&format!("Parse error: {}", e));
+            std::process::exit(1);
+        }
+    }
 }
 
 fn cmd_reset(confirm: bool) {

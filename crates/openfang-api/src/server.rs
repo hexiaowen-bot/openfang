@@ -325,6 +325,31 @@ pub async fn build_router(
             "/api/workflows/{id}/runs",
             axum::routing::get(routes::list_workflow_runs),
         )
+        // Orchestrator endpoints
+        .route(
+            "/api/orchestrator/tasks",
+            axum::routing::get(routes::list_orchestration_tasks).post(routes::submit_orchestration_task),
+        )
+        .route(
+            "/api/orchestrator/tasks/{id}",
+            axum::routing::get(routes::get_orchestration_task).delete(routes::cancel_orchestration_task),
+        )
+        .route(
+            "/api/orchestrator/tasks/{id}/execute",
+            axum::routing::post(routes::execute_orchestration_task),
+        )
+        .route(
+            "/api/orchestrator/agents",
+            axum::routing::get(routes::list_managed_agents),
+        )
+        .route(
+            "/api/orchestrator/agents/{id}/retention",
+            axum::routing::get(routes::get_agent_retention),
+        )
+        .route(
+            "/api/orchestrator/agents/cleanup",
+            axum::routing::post(routes::cleanup_idle_agents),
+        )
         // Skills endpoints
         .route("/api/skills", axum::routing::get(routes::list_skills))
         .route(

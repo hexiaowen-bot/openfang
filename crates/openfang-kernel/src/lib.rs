@@ -20,10 +20,16 @@ pub mod pairing;
 pub mod registry;
 pub mod scheduler;
 pub mod supervisor;
+pub mod swarm_parser;
 pub mod triggers;
 pub mod whatsapp_gateway;
 pub mod wizard;
+pub mod swarm;
+pub mod swarm_condition;
+pub mod swarm_mapping;
 pub mod workflow;
+
+pub mod orchestrator;
 
 pub use kernel::DeliveryTracker;
 pub use kernel::OpenFangKernel;

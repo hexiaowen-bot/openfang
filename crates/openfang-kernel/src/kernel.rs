@@ -12,6 +12,8 @@ use crate::scheduler::AgentScheduler;
 use crate::supervisor::Supervisor;
 use crate::triggers::{TriggerEngine, TriggerId, TriggerPattern};
 use crate::workflow::{StepAgent, Workflow, WorkflowEngine, WorkflowId, WorkflowRunId};
+use crate::swarm::SwarmEngine;
+use crate::orchestrator::engine::OrchestratorEngine;
 
 use openfang_memory::MemorySubstrate;
 use openfang_runtime::agent_loop::{
@@ -74,6 +76,10 @@ pub struct OpenFangKernel {
     pub supervisor: Supervisor,
     /// Workflow engine.
     pub workflows: WorkflowEngine,
+    /// Swarm engine — multi-step agent pipeline with dependency management.
+    pub swarm_engine: SwarmEngine,
+    /// Orchestrator engine — task routing and execution strategy management.
+    pub orchestrator: OrchestratorEngine,
     /// Event-driven trigger engine.
     pub triggers: TriggerEngine,
     /// Background agent executor.
@@ -1028,6 +1034,8 @@ impl OpenFangKernel {
             memory: memory.clone(),
             supervisor,
             workflows: WorkflowEngine::new(),
+            swarm_engine: SwarmEngine::new(),
+            orchestrator: OrchestratorEngine::new(),
             triggers: TriggerEngine::new(),
             background,
             audit_log: Arc::new(AuditLog::with_db(memory.usage_conn())),
@@ -3808,6 +3816,165 @@ impl OpenFangKernel {
             }
         }
         count
+    }
+
+    // =========================================================================
+    // Swarm API
+    // =========================================================================
+
+    /// Load a swarm definition from TOML content.
+    pub async fn load_swarm(&self, toml_content: &str) -> Result<String, String> {
+        self.swarm_engine.load_definition(toml_content).await
+    }
+
+    /// Run a swarm execution end-to-end.
+    pub async fn run_swarm(
+        &self,
+        def_id: &str,
+        input: std::collections::HashMap<String, serde_json::Value>,
+    ) -> KernelResult<serde_json::Value> {
+        let exec_id = self
+            .swarm_engine
+            .create_execution(def_id, input)
+            .await
+            .map_err(|e| {
+                KernelError::OpenFang(OpenFangError::Internal(format!(
+                    "Failed to create swarm execution: {e}"
+                )))
+            })?;
+
+        // Message sender: invokes agent by name and returns (output, in_tokens, out_tokens)
+        let send_message = |agent_name: String, prompt: String| async move {
+            // Look up agent by name in the registry
+            let entry = self
+                .registry
+                .find_by_name(&agent_name)
+                .ok_or_else(|| format!("Agent '{}' not found", agent_name))?;
+
+            self.send_message(entry.id, &prompt)
+                .await
+                .map(|r| {
+                    (
+                        r.response,
+                        r.total_usage.input_tokens,
+                        r.total_usage.output_tokens,
+                    )
+                })
+                .map_err(|e| format!("{e}"))
+        };
+
+        // SECURITY: Global swarm timeout to prevent runaway execution.
+        const MAX_SWARM_SECS: u64 = 3600; // 1 hour
+
+        let output = tokio::time::timeout(
+            std::time::Duration::from_secs(MAX_SWARM_SECS),
+            self.swarm_engine.execute(&exec_id, send_message),
+        )
+        .await
+        .map_err(|_| {
+            KernelError::OpenFang(OpenFangError::Internal(format!(
+                "Swarm timed out after {MAX_SWARM_SECS}s"
+            )))
+        })?
+        .map_err(|e| {
+            KernelError::OpenFang(OpenFangError::Internal(format!("Swarm execution failed: {e}")))
+        })?;
+
+        Ok(output)
+    }
+
+    /// Get the status of a swarm execution.
+    pub async fn swarm_status(
+        &self,
+        execution_id: &str,
+    ) -> Option<openfang_types::swarm::SwarmExecution> {
+        self.swarm_engine.get_execution(execution_id).await
+    }
+
+    /// List all loaded swarm definitions.
+    pub async fn list_swarms(&self) -> Vec<openfang_types::swarm::SwarmDefinition> {
+        self.swarm_engine.list_definitions().await
+    }
+
+    /// Get a reference to the swarm engine for direct access.
+    pub fn swarm_engine(&self) -> &SwarmEngine {
+        &self.swarm_engine
+    }
+
+    /// Auto-load swarm definitions from a directory.
+    ///
+    /// Scans the given directory for `.toml` files, parses each as a
+    /// `SwarmDefinition`, and loads it. Invalid files are skipped with a warning.
+    pub async fn load_swarms_from_dir(&self, dir: &std::path::Path) -> usize {
+        let entries = match std::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(e) => {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    tracing::warn!(path = ?dir, error = %e, "Failed to read swarms directory");
+                }
+                return 0;
+            }
+        };
+
+        let mut count = 0;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) != Some("toml") {
+                continue;
+            }
+            let content = match std::fs::read_to_string(&path) {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::warn!(path = ?path, error = %e, "Failed to read swarm file");
+                    continue;
+                }
+            };
+            match self.load_swarm(&content).await {
+                Ok(def_id) => {
+                    tracing::info!(path = ?path, id = %def_id, "Auto-loaded swarm definition");
+                    count += 1;
+                }
+                Err(e) => {
+                    tracing::warn!(path = ?path, error = %e, "Invalid swarm TOML, skipping");
+                }
+            }
+        }
+        count
+    }
+
+    // ========================================================================
+    // Orchestrator Methods
+    // ========================================================================
+
+    /// Submit an orchestration request and return the task ID.
+    ///
+    /// The orchestrator will analyze the task intent and complexity,
+    /// route to the appropriate execution path (Simple/Medium/Complex),
+    /// and manage agent lifecycle.
+    pub fn orchestrate(
+        &self,
+        request: openfang_types::orchestrator::OrchestrationRequest,
+    ) -> openfang_types::orchestrator::TaskId {
+        self.orchestrator.submit(request)
+    }
+
+    /// Get the execution state of an orchestration task.
+    pub fn orchestration_status(
+        &self,
+        task_id: &openfang_types::orchestrator::TaskId,
+    ) -> Option<openfang_types::orchestrator::ExecutionState> {
+        self.orchestrator.get_status(task_id)
+    }
+
+    /// Cancel an orchestration task.
+    ///
+    /// Returns `true` if the task was cancelled, `false` if not found
+    /// or already completed.
+    pub fn orchestration_cancel(
+        &self,
+        task_id: &openfang_types::orchestrator::TaskId,
+    ) -> bool {
+        self.orchestrator.cancel(task_id)
     }
 
     /// Start background loops for all non-reactive agents.

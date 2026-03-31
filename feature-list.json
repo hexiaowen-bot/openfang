@@ -1,0 +1,207 @@
+{
+  "project": "agent-swarm",
+  "created": "2026-03-28",
+  "tech_stack": {
+    "language": "rust",
+    "test_framework": "cargo test",
+    "coverage_tool": "cargo-tarpaulin",
+    "mutation_tool": "cargo-mutants"
+  },
+  "quality_gates": {
+    "line_coverage_min": 90,
+    "branch_coverage_min": 80,
+    "mutation_score_min": 80
+  },
+  "constraints": [
+    "完全复用现有的 Hand 基础设施，不修改 Hand 本身",
+    "通过 Swarm.toml 声明式配置定义工作流，无需编写代码",
+    "步骤间的数据传递必须通过显式映射定义",
+    "工作流执行状态、中间结果全程可追踪"
+  ],
+  "assumptions": [
+    "Hand Registry 已存在且可正常访问",
+    "共享知识图谱系统已部署",
+    "CLI 框架已集成在 openfang-cli crate 中",
+    "Tokio 异步运行时可用"
+  ],
+  "required_configs": [
+    {
+      "name": "OpenFang Home 目录",
+      "type": "env",
+      "key": "OPENFANG_HOME",
+      "description": "OpenFang 系统主目录路径，用于存储 Swarm 配置和输出",
+      "required_by": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "check_hint": "设置环境变量: export OPENFANG_HOME=$HOME/.openfang"
+    }
+  ],
+  "features": [
+    {
+      "id": 1,
+      "category": "core",
+      "title": "Swarm.toml 配置解析器",
+      "description": "实现 Swarm.toml 配置文件的解析和验证，支持工作流定义、步骤配置、输入映射、错误处理等完整配置结构",
+      "priority": "high",
+      "status": "failing",
+      "verification_steps": [
+        "Given 一个有效的 Swarm.toml 配置文件，当调用解析器时，Then 返回结构化的 SwarmDefinition 对象",
+        "Given 一个包含所有字段的完整配置，Then 正确解析 input、steps、error_handling、settings、dashboard、events 等所有段",
+        "Given 一个无效的配置（如缺少必需字段、类型错误），Then 返回清晰的错误信息指明问题位置"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": 2,
+      "category": "core",
+      "title": "顺序步骤执行引擎",
+      "description": "实现基础的步骤执行引擎，支持按定义顺序依次执行工作流步骤，调用指定的 Hand 并收集结果",
+      "priority": "high",
+      "status": "failing",
+      "verification_steps": [
+        "Given 一个包含3个顺序步骤的工作流，当执行时，Then 步骤按定义顺序依次执行，每个步骤完成后才开始下一个",
+        "Given 步骤执行成功，Then 步骤结果被正确存储在 SwarmContext 中，包含 status、output、duration_ms",
+        "Given 某个步骤执行失败且错误策略为 fail，Then 工作流立即停止，后续步骤不再执行，返回错误状态"
+      ],
+      "dependencies": [1]
+    },
+    {
+      "id": 3,
+      "category": "core",
+      "title": "基础数据映射引擎",
+      "description": "实现步骤间的数据映射机制，支持从 input、steps输出、环境变量、常量等源映射到 Hand 输入",
+      "priority": "high",
+      "status": "failing",
+      "verification_steps": [
+        "Given input.target_company='OpenAI'，当映射到 settings.target_subject 时，Then Hand 接收到正确的值",
+        "Given steps.collect.output.entities=[...]，当映射到后续步骤的 prompt.context 时，Then 数据正确传递",
+        "Given 映射规则包含不存在的路径，Then 返回明确的错误信息指明哪个映射失败"
+      ],
+      "dependencies": [2]
+    },
+    {
+      "id": 4,
+      "category": "core",
+      "title": "CLI swarm run 命令",
+      "description": "实现 openfang swarm run 命令，支持从 Swarm.toml 加载配置并执行工作流，接收输入参数",
+      "priority": "high",
+      "status": "failing",
+      "verification_steps": [
+        "Given swarm run <swarm-id> --input key=value，Then 工作流启动并接收输入参数",
+        "Given 工作流执行中，Then 实时显示执行进度 [1/4] 步骤名称 (hand) ...",
+        "Given 工作流完成，Then 显示总耗时和输出文件路径"
+      ],
+      "dependencies": [3]
+    },
+    {
+      "id": 5,
+      "category": "core",
+      "title": "CLI swarm status 命令",
+      "description": "实现 openfang swarm status 命令，支持查询指定执行 ID 的工作流状态",
+      "priority": "high",
+      "status": "failing",
+      "verification_steps": [
+        "Given swarm status <execution-id>，Then 返回当前执行状态：Pending/Running/Completed/Failed/Cancelled",
+        "Given 执行已完成，Then 显示完成时间、总耗时、各步骤执行结果摘要",
+        "Given 不存在的 execution-id，Then 返回错误信息说明未找到该执行记录"
+      ],
+      "dependencies": [4]
+    },
+    {
+      "id": 6,
+      "category": "core",
+      "title": "DAG 调度器与并行执行",
+      "description": "实现基于 DAG 的调度器，使用拓扑排序确定执行顺序，无依赖的步骤并行执行，支持 max_parallel_steps 限制",
+      "priority": "high",
+      "status": "failing",
+      "verification_steps": [
+        "Given 步骤 A→B→C 的链式依赖，Then 按 A→B→C 顺序执行，不并行",
+        "Given 步骤 A 产出 B 和 C（无依赖），Then B 和 C 同时开始执行，总时间小于串行执行",
+        "Given max_parallel_steps=2 且有3个无依赖步骤，Then 先执行2个，完成后执行第3个"
+      ],
+      "dependencies": [5]
+    },
+    {
+      "id": 7,
+      "category": "core",
+      "title": "条件执行引擎",
+      "description": "实现条件表达式引擎，支持比较、逻辑运算、存在检查等操作符，根据条件决定是否执行步骤",
+      "priority": "high",
+      "status": "failing",
+      "verification_steps": [
+        "Given condition='steps.collect.metrics.data_points > 5' 且条件为真，Then 步骤执行",
+        "Given condition='input.depth == \"deep\" && has(steps.collect.output)'，Then 正确评估复合条件",
+        "Given 条件为假，Then 步骤状态为 Skipped，不影响工作流继续执行"
+      ],
+      "dependencies": [6]
+    },
+    {
+      "id": 8,
+      "category": "core",
+      "title": "错误处理与重试机制",
+      "description": "实现错误处理策略（fail/continue/skip/retry）和重试机制，支持全局和步骤级配置",
+      "priority": "high",
+      "status": "failing",
+      "verification_steps": [
+        "Given 步骤失败且策略为 retry(max_attempts=3, delay=5s)，Then 自动重试3次，每次间隔5秒",
+        "Given 步骤失败且策略为 continue，Then 记录错误，继续执行后续步骤",
+        "Given 使用 exponential backoff 策略，Then 重试间隔按 5s, 10s, 20s 递增"
+      ],
+      "dependencies": [7]
+    },
+    {
+      "id": 9,
+      "category": "core",
+      "title": "完整 CLI 命令集",
+      "description": "实现剩余的 CLI 命令：list、show、logs、cancel、retry、validate",
+      "priority": "medium",
+      "status": "failing",
+      "verification_steps": [
+        "Given swarm list，Then 列出所有可用的 Swarm 配置及其基本信息",
+        "Given swarm logs <execution-id> --step <step-id>，Then 显示指定步骤的详细日志",
+        "Given swarm cancel <execution-id>，Then 取消正在执行的工作流，状态变为 Cancelled"
+      ],
+      "dependencies": [8]
+    },
+    {
+      "id": 10,
+      "category": "enhancement",
+      "title": "工作流模板库",
+      "description": "实现内置工作流模板系统，提供常见场景的预定义模板（市场情报、内容生产、交易信号等）",
+      "priority": "medium",
+      "status": "failing",
+      "verification_steps": [
+        "Given swarm template list，Then 显示所有可用模板及其描述",
+        "Given swarm template use market-intelligence，Then 基于模板创建新的 Swarm.toml",
+        "Given 从模板创建的 Swarm，Then 只需修改 input 参数即可运行"
+      ],
+      "dependencies": [9]
+    },
+    {
+      "id": 11,
+      "category": "enhancement",
+      "title": "执行历史分析",
+      "description": "实现工作流执行历史记录和查询功能，支持按时间、状态、Swarm ID 过滤",
+      "priority": "low",
+      "status": "failing",
+      "verification_steps": [
+        "Given swarm history --limit 10，Then 显示最近10次执行记录",
+        "Given swarm history --swarm market-intelligence --status failed，Then 过滤显示指定条件的历史",
+        "Given 执行历史包含成功和失败，Then 计算并显示成功率统计"
+      ],
+      "dependencies": [9]
+    },
+    {
+      "id": 12,
+      "category": "non-functional",
+      "title": "性能与可观测性",
+      "description": "实现性能指标收集和可观测性功能，包括执行时长、步骤成功率、资源使用等仪表盘指标",
+      "priority": "medium",
+      "status": "failing",
+      "verification_steps": [
+        "Given 工作流执行完成，Then dashboard.metrics 包含 steps_completed、total_duration_sec、success_rate",
+        "Given 并行执行步骤，Then 实际并发数不超过 max_parallel_steps 配置",
+        "Given 工作流超时（timeout_minutes），Then 自动取消执行并返回超时错误"
+      ],
+      "dependencies": [6]
+    }
+  ]
+}
